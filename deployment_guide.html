@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PriceMaster Hub — Deployment Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Roboto', sans-serif; background: #f0f4f9; color: #212121; font-size: 14px; line-height: 1.6; }
+  .header { background: #404789; color: #fff; padding: 30px 40px; display: flex; align-items: center; gap: 16px; }
+  .header .logo { width: 44px; height: 44px; background: rgba(255,255,255,.15); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; font-style: italic; }
+  .header h1 { font-size: 22px; font-weight: 500; }
+  .header p { font-size: 13px; opacity: .8; margin-top: 3px; }
+  .content { max-width: 860px; margin: 0 auto; padding: 32px 20px; }
+  .overview { background: #fff; border-radius: 10px; padding: 24px 28px; margin-bottom: 28px; box-shadow: 0 1px 6px rgba(0,0,0,.08); display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .overview-item { text-align: center; }
+  .overview-item .icon { font-size: 28px; margin-bottom: 6px; }
+  .overview-item .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+  .overview-item .value { font-size: 15px; font-weight: 500; color: #404789; }
+  .section { background: #fff; border-radius: 10px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+  .section-header { background: linear-gradient(135deg, #404789, #5259b3); color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+  .section-header .step-num { width: 32px; height: 32px; background: rgba(255,255,255,.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+  .section-header h2 { font-size: 16px; font-weight: 500; }
+  .section-header .est { font-size: 12px; opacity: .8; margin-top: 2px; }
+  .section-body { padding: 20px 24px; }
+  .step { display: flex; gap: 14px; margin-bottom: 18px; }
+  .step:last-child { margin-bottom: 0; }
+  .step .bullet { width: 26px; height: 26px; background: #eef0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #404789; flex-shrink: 0; margin-top: 1px; }
+  .step .body .title { font-weight: 500; color: #212121; margin-bottom: 4px; }
+  .step .body .desc { color: #555; font-size: 13px; }
+  .step .body .desc a { color: #2278cf; text-decoration: none; }
+  .step .body .desc a:hover { text-decoration: underline; }
+  .code { background: #f5f6ff; border: 1px solid #dde0f5; border-radius: 6px; padding: 10px 14px; font-family: 'Courier New', monospace; font-size: 12px; color: #343c86; margin: 8px 0; white-space: pre; overflow-x: auto; }
+  .tip { background: #fff8e1; border-left: 4px solid #da9b38; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 12px; color: #6d4c00; }
+  .tip strong { color: #c07800; }
+  .note { background: #e3f2fd; border-left: 4px solid #2278cf; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 12px; color: #0d47a1; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; }
+  .badge-free { background: #e8f5e9; color: #2e7d32; }
+  .badge-required { background: #ffebee; color: '#c62828'; }
+  .checklist { margin-top: 16px; display: grid; gap: 8px; }
+  .check-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f9f9fb; border-radius: 6px; border: 1px solid #ececf5; font-size: 13px; }
+  .check-item .dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; flex-shrink: 0; }
+  .divider { border: none; border-top: 1px solid #f0f0f0; margin: 16px 0; }
+  .footer { text-align: center; padding: 24px; color: #999; font-size: 12px; }
+  @media (max-width: 600px) { .overview { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">IVP</div>
+  <div>
+    <h1>PriceMaster Implementation Hub</h1>
+    <p>Deployment Guide — Non-Technical Step-by-Step Instructions</p>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- Overview -->
+  <div class="overview">
+    <div class="overview-item"><div class="icon">⏱</div><div class="label">Total Time</div><div class="value">~30 minutes</div></div>
+    <div class="overview-item"><div class="icon">💰</div><div class="label">Cost</div><div class="value">Free (both tools)</div></div>
+    <div class="overview-item"><div class="icon">🔧</div><div class="label">Technical Skill</div><div class="value">Beginner friendly</div></div>
+  </div>
+
+  <div class="note">
+    <strong>Before you begin:</strong> You'll need two free accounts — one on <strong>GitHub</strong> (to host the code) and one on <strong>Supabase</strong> (the database). Both are free. No credit card needed.
+  </div>
+
+  <!-- PART 1: Supabase -->
+  <br>
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">1</div>
+      <div>
+        <h2>Set Up Your Database (Supabase) <span class="badge badge-free">Free</span></h2>
+        <div class="est">Estimated time: 10 minutes</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <div class="step">
+        <div class="bullet">a</div>
+        <div class="body">
+          <div class="title">Create a Supabase account</div>
+          <div class="desc">Go to <a href="https://supabase.com" target="_blank">supabase.com</a> and click <strong>Start your project</strong>. Sign up with your GitHub or Google account — it's free.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">b</div>
+        <div class="body">
+          <div class="title">Create a new project</div>
+          <div class="desc">
+            Click <strong>New Project</strong>. Fill in:
+            <ul style="margin: 8px 0 0 18px; font-size: 13px; color: #555;">
+              <li><strong>Name:</strong> pricemaster-hub (or any name you like)</li>
+              <li><strong>Database Password:</strong> choose a strong password and <strong>save it somewhere safe</strong></li>
+              <li><strong>Region:</strong> choose the one closest to your team</li>
+            </ul>
+            Click <strong>Create new project</strong> and wait ~2 minutes for it to be ready.
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">c</div>
+        <div class="body">
+          <div class="title">Run the database setup script</div>
+          <div class="desc">
+            In the left sidebar, click <strong>SQL Editor</strong>, then click <strong>+ New query</strong>.<br><br>
+            Open the file <code>supabase_schema.sql</code> from the project folder, copy <strong>all of its contents</strong>, paste it into the SQL Editor, and click <strong>Run</strong> (or press Ctrl+Enter).<br><br>
+            You should see a green "Success" message. This creates all the tables the app needs.
+          </div>
+          <div class="tip"><strong>Tip:</strong> If you see an error saying a table already exists, that's fine — just proceed.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">d</div>
+        <div class="body">
+          <div class="title">Copy your API credentials</div>
+          <div class="desc">
+            In the left sidebar, go to <strong>Settings → API</strong>.<br><br>
+            You'll see two values — copy both and keep them handy:
+            <div class="code">Project URL:    https://xxxxxxxxxxxxxx.supabase.co
+Anon/Public Key: eyJhbGciOi... (a long string)</div>
+          </div>
+          <div class="tip"><strong>Important:</strong> The "anon key" is safe to use in a web app. Never share your "service_role" key.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PART 2: GitHub -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">2</div>
+      <div>
+        <h2>Put the Code on GitHub <span class="badge badge-free">Free</span></h2>
+        <div class="est">Estimated time: 5 minutes</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <div class="step">
+        <div class="bullet">a</div>
+        <div class="body">
+          <div class="title">Create a GitHub account (if you don't have one)</div>
+          <div class="desc">Go to <a href="https://github.com" target="_blank">github.com</a> and sign up. It's free.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">b</div>
+        <div class="body">
+          <div class="title">Create a new repository</div>
+          <div class="desc">
+            Click the <strong>+</strong> icon (top-right) → <strong>New repository</strong>.<br>
+            Name it <strong>pricemaster-hub</strong>, set it to <strong>Private</strong>, and click <strong>Create repository</strong>.
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">c</div>
+        <div class="body">
+          <div class="title">Upload the project files</div>
+          <div class="desc">
+            On the new repository page, click <strong>uploading an existing file</strong>.<br>
+            Drag the entire <strong>pricemaster-hub</strong> project folder contents (all files and folders) into the upload area.<br>
+            Add a commit message like <em>"Initial upload"</em> and click <strong>Commit changes</strong>.
+          </div>
+          <div class="note">Make sure <strong>.env.local</strong> is NOT uploaded (it contains your secrets). The <code>.gitignore</code> file already prevents this if you use Git from the command line, but if uploading manually, just don't include it.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PART 3: Deploy on Netlify -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">3</div>
+      <div>
+        <h2>Deploy the App (Netlify — Recommended) <span class="badge badge-free">Free</span></h2>
+        <div class="est">Estimated time: 10 minutes</div>
+      </div>
+    </div>
+    <div class="section-body">
+
+      <div class="note">
+        <strong>Why Netlify?</strong> It connects directly to GitHub, builds your app automatically, and lets you set secret environment variables safely — all for free.
+      </div>
+      <br>
+
+      <div class="step">
+        <div class="bullet">a</div>
+        <div class="body">
+          <div class="title">Create a Netlify account</div>
+          <div class="desc">Go to <a href="https://netlify.com" target="_blank">netlify.com</a> → click <strong>Sign up</strong> → choose <strong>Sign up with GitHub</strong>.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">b</div>
+        <div class="body">
+          <div class="title">Connect your GitHub repository</div>
+          <div class="desc">
+            Click <strong>Add new site → Import an existing project → GitHub</strong>.<br>
+            Authorize Netlify to access your GitHub, then select the <strong>pricemaster-hub</strong> repository.
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">c</div>
+        <div class="body">
+          <div class="title">Configure build settings</div>
+          <div class="desc">
+            Netlify may auto-detect these. Confirm they are set as follows:
+            <div class="code">Build command:   npm run build
+Publish directory: build</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">d</div>
+        <div class="body">
+          <div class="title">Add your Supabase credentials as environment variables</div>
+          <div class="desc">
+            <strong>Before</strong> clicking Deploy, click <strong>Add environment variables</strong> (or go to Site settings → Environment variables after deployment).<br><br>
+            Add these two variables using the values you copied in Step 1d:
+            <div class="code">Key:   REACT_APP_SUPABASE_URL
+Value: https://xxxxxxxxxxxxxx.supabase.co
+
+Key:   REACT_APP_SUPABASE_ANON_KEY
+Value: eyJhbGciOi... (your anon key)</div>
+          </div>
+          <div class="tip"><strong>Important:</strong> The variable names must be typed exactly as shown — including REACT_APP_ at the start.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">e</div>
+        <div class="body">
+          <div class="title">Deploy!</div>
+          <div class="desc">
+            Click <strong>Deploy site</strong>. Netlify will build the app (takes about 2–3 minutes).<br><br>
+            When it's done, you'll see a green <strong>"Published"</strong> status and a URL like <code>https://random-name.netlify.app</code>.<br><br>
+            Open that URL — your app is live! 🎉
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="bullet">f</div>
+        <div class="body">
+          <div class="title">Optional: Set a custom domain name</div>
+          <div class="desc">
+            In Netlify, go to <strong>Site settings → Domain management → Add custom domain</strong>.<br>
+            You can use a domain you own, or keep the free <code>.netlify.app</code> URL.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PART 4: Share with team -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">4</div>
+      <div>
+        <h2>Share with Your Team</h2>
+        <div class="est">Estimated time: 2 minutes</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="step">
+        <div class="bullet">a</div>
+        <div class="body">
+          <div class="title">Send the URL to your team</div>
+          <div class="desc">
+            Everyone on your team just needs the Netlify URL (e.g. <code>https://pricemaster-hub.netlify.app</code>). No installation needed — they open it in any browser.
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="bullet">b</div>
+        <div class="body">
+          <div class="title">All team members share the same data</div>
+          <div class="desc">
+            The app is set up so all team members see and edit the same projects in real time. There's no login required — the shared database does all the work.
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="bullet">c</div>
+        <div class="body">
+          <div class="title">Create your first real project</div>
+          <div class="desc">
+            On first load, a demo project "Acme Capital" is created automatically. Click <strong>+ NEW</strong> in the sidebar to create your first real client project. The demo project can be ignored or used as a reference.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PART 5: Future updates -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">5</div>
+      <div>
+        <h2>Updating the App in Future</h2>
+        <div class="est">Whenever code changes are needed</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="step">
+        <div class="bullet">1</div>
+        <div class="body">
+          <div class="title">Upload the new files to GitHub</div>
+          <div class="desc">Go to your GitHub repository, upload the updated files (you can replace existing ones).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="bullet">2</div>
+        <div class="body">
+          <div class="title">Netlify redeploys automatically</div>
+          <div class="desc">Netlify watches your GitHub repository. Every time you push new code, it automatically rebuilds and redeploys within 2–3 minutes. No manual action needed.</div>
+        </div>
+      </div>
+      <div class="note">
+        <strong>Your data is safe:</strong> Code updates never affect your Supabase database. All projects, tasks, and RAID items remain intact.
+      </div>
+    </div>
+  </div>
+
+  <!-- Checklist -->
+  <div class="section">
+    <div class="section-header" style="background: linear-gradient(135deg, #2e7d32, #388e3c);">
+      <div class="step-num">✓</div>
+      <div>
+        <h2>Deployment Checklist</h2>
+        <div class="est">Use this to verify everything is done</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="checklist">
+        <div class="check-item"><div class="dot"></div> Supabase project created</div>
+        <div class="check-item"><div class="dot"></div> <code>supabase_schema.sql</code> run successfully in SQL Editor</div>
+        <div class="check-item"><div class="dot"></div> Supabase Project URL and Anon Key copied</div>
+        <div class="check-item"><div class="dot"></div> GitHub repository created and files uploaded</div>
+        <div class="check-item"><div class="dot"></div> Netlify connected to GitHub repository</div>
+        <div class="check-item"><div class="dot"></div> Environment variables added in Netlify (REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY)</div>
+        <div class="check-item"><div class="dot"></div> App deployed and accessible via Netlify URL</div>
+        <div class="check-item"><div class="dot"></div> URL shared with team</div>
+        <div class="check-item"><div class="dot"></div> First real client project created</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Troubleshooting -->
+  <div class="section">
+    <div class="section-header" style="background: linear-gradient(135deg, #5d4037, #795548);">
+      <div class="step-num">?</div>
+      <div>
+        <h2>Troubleshooting</h2>
+        <div class="est">Common issues and fixes</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="step">
+        <div class="bullet">!</div>
+        <div class="body">
+          <div class="title">App loads but shows "Failed to load data"</div>
+          <div class="desc">Your Supabase credentials are missing or incorrect in Netlify. Go to Netlify → Site settings → Environment variables. Check that <strong>REACT_APP_SUPABASE_URL</strong> and <strong>REACT_APP_SUPABASE_ANON_KEY</strong> are spelled exactly right and have the correct values. Then trigger a redeploy (Deploys → Trigger deploy).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="bullet">!</div>
+        <div class="body">
+          <div class="title">Netlify build fails with an error</div>
+          <div class="desc">Check that all files from the project folder were uploaded to GitHub — especially <code>package.json</code> and the <code>src/</code> folder. Also make sure the build command is set to <code>npm run build</code>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="bullet">!</div>
+        <div class="body">
+          <div class="title">Data not saving between sessions</div>
+          <div class="desc">The app saves everything to Supabase. If data disappears, confirm the SQL schema was run successfully. In Supabase, go to Table Editor and check that tables like <code>projects</code> and <code>tasks</code> exist.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  PriceMaster Implementation Hub · Powered by React + Supabase · Deployed on Netlify
+</div>
+
+</body>
+</html>
