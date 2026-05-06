@@ -24,12 +24,12 @@ export default function RaidLog() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [isNew, setIsNew] = useState(false);
 
-  if (!activeProject) return <EmptyState message="No project selected." />;
-
   const filtered = useMemo(() => raidItems.filter(r =>
     (!filterClass || r.classification === filterClass) &&
     (!filterStatus || r.status === filterStatus)
   ), [raidItems, filterClass, filterStatus]);
+
+  if (!activeProject) return <EmptyState message="No project selected." />;
 
   const openNew = () => { setForm({ ...EMPTY_FORM, raisedOn: new Date().toISOString().slice(0, 10) }); setIsNew(true); setEditItem({}); };
   const openEdit = (item) => { setForm({ ...item }); setIsNew(false); setEditItem(item); };

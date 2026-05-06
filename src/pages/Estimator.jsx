@@ -48,9 +48,7 @@ export default function Estimator() {
   const [inputs, setInputs] = useState(() => ({ ...STEP_DEFAULTS, ...(activeProject?.estimator?.inputs || {}) }));
   const [risks, setRisks] = useState(() => ({ ...(activeProject?.estimator?.risks || {}) }));
 
-  if (!activeProject) return <EmptyState message="No project selected." />;
-
-  const steps = activeProject.estimator?.stepsBase || [];
+  const steps = activeProject?.estimator?.stepsBase || [];
 
   const stepHours = useMemo(() => steps.map(s => {
     const mul = getMul(s.mul, inputs[s.mul]);
@@ -63,6 +61,8 @@ export default function Estimator() {
 
   const baHours = steps.reduce((s, st, i) => s + (st.role.includes('BA') ? stepHours[i] : 0), 0);
   const engHours = steps.reduce((s, st, i) => s + (st.role.includes('Engineer') ? stepHours[i] : 0), 0);
+
+  if (!activeProject) return <EmptyState message="No project selected." />;
 
   const handleSave = async () => {
     await updateEstimator({ inputs, risks, stepsBase: steps });

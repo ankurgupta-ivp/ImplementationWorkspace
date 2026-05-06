@@ -40,13 +40,13 @@ export default function Tasks() {
   const [editTask, setEditTask] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  if (!activeProject) return <EmptyState message="No project selected." />;
-
   const filtered = useMemo(() => tasks.filter(t =>
     (!filterPhase || t.phase === filterPhase) &&
     (!filterStatus || t.ownerStatus === filterStatus) &&
     (!filterText || t.task?.toLowerCase().includes(filterText.toLowerCase()) || t.item?.toLowerCase().includes(filterText.toLowerCase()))
   ), [tasks, filterPhase, filterStatus, filterText]);
+
+  if (!activeProject) return <EmptyState message="No project selected." />;
 
   const done = tasks.filter(t => t.ownerStatus === 'Done').length;
   const inprog = tasks.filter(t => t.ownerStatus === 'In Progress').length;
