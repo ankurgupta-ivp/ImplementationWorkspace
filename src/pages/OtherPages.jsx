@@ -35,7 +35,7 @@ export function Dashboard() {
 
 // ── Template Library ──────────────────────────────────────────
 export function Templates() {
-  const { templates, showToast } = useApp();
+  const { templates } = useApp();
   const [activeTab, setActiveTab] = useState(null); // null = overview, else 'questionnaire'|'tasks'|'raidlog'
 
   const cards = [
