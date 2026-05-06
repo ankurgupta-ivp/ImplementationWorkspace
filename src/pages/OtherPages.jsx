@@ -46,7 +46,7 @@ export function Dashboard() {
 
 // ── Template Library ──────────────────────────────────────────
 export function Templates() {
-  const { templates, setCurrentPage } = useApp();
+  const { templates } = useApp();
   const cards = [
     { key: 'questionnaire', icon: '⊕', name: 'Kickoff Questionnaire', desc: 'Standard set of discovery questions covering scope, pricing sources, workflows, and compliance requirements.', meta: `${(templates?.questionnaire?.sections || []).reduce((s, sec) => s + sec.questions.length, 0)} questions across ${(templates?.questionnaire?.sections || []).length} sections` },
     { key: 'estimator',     icon: '⏱', name: 'Estimator',             desc: 'Effort model with multipliers per implementation step, risk adjustments, and role-based breakdown.',       meta: `${(templates?.estimator?.steps || []).length} estimation steps` },
