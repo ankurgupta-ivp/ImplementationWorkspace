@@ -1,12 +1,10 @@
 import React from 'react';
 import { useApp } from '../hooks/useApp';
-import { PageHeader, KpiCard, ProgressBar, WidgetCard, EmptyState } from '../components/UI';
+import { PageHeader, WidgetCard, EmptyState } from '../components/UI';
 
 // ── Portfolio Dashboard ───────────────────────────────────────
 export function Dashboard() {
-  const { projects, tasks: activeTasks, switchProject, setCurrentPage } = useApp();
-  // We only have tasks for the active project; for the dashboard show project-level stats
-  const { activeProjectId } = useApp();
+  const { projects, switchProject, setCurrentPage, activeProjectId } = useApp();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>

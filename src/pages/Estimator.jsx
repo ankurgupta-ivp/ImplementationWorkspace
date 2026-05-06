@@ -48,7 +48,7 @@ export default function Estimator() {
   const [inputs, setInputs] = useState(() => ({ ...STEP_DEFAULTS, ...(activeProject?.estimator?.inputs || {}) }));
   const [risks, setRisks] = useState(() => ({ ...(activeProject?.estimator?.risks || {}) }));
 
-  const steps = activeProject?.estimator?.stepsBase || [];
+  const steps = useMemo(() => activeProject?.estimator?.stepsBase || [], [activeProject]);
 
   const stepHours = useMemo(() => steps.map(s => {
     const mul = getMul(s.mul, inputs[s.mul]);

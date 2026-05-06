@@ -5,10 +5,8 @@ import { ADMIN_LISTS } from '../lib/defaults';
 import * as XLSX from 'xlsx';
 
 const STATUSES = ADMIN_LISTS.statuses;
-const TASK_TYPES = ['BA Checklist Item', 'Dev Task'];
 
 function TaskRow({ task, idx, onEdit }) {
-  const statusColor = { 'Done': '#4caf50', 'In Progress': '#2278cf', 'Blocked': '#d32f2f', 'Delayed': '#d32f2f', 'Not Started': '#bbb' };
   return (
     <tr style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fafafe' : '#fff' }}
       onMouseEnter={e => e.currentTarget.style.background = '#f0f4ff'}
@@ -33,7 +31,7 @@ function TaskRow({ task, idx, onEdit }) {
 
 export default function Tasks() {
   const { activeProject, tasks, updateSingleTask, showToast } = useApp();
-  const { ask, dialog } = useConfirm();
+  const { dialog } = useConfirm();
   const [filterPhase, setFilterPhase] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterText, setFilterText] = useState('');
