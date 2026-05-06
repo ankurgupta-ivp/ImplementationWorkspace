@@ -3,7 +3,7 @@ import {
   loadTemplates, loadProjects, loadTasks, loadRaidItems,
   saveProject, saveTasks, saveRaidItem, deleteRaidItem,
   saveTemplate, getAppState, setAppState,
-  createProjectFromTemplate, deleteProject, uid,
+  createProjectFromTemplate, deleteProject,
 } from '../lib/db';
 
 const AppContext = createContext(null);
