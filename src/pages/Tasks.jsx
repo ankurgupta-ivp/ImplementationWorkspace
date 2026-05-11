@@ -65,7 +65,6 @@ export default function Tasks() {
   const [editTask,  setEditTask]  = useState(null);
   const [editForm,  setEditForm]  = useState({});
   const [isNew,     setIsNew]     = useState(false);
-  const [showNewForm, setShowNewForm] = useState(false);
   const [newForm,   setNewForm]   = useState({ ...EMPTY_TASK });
 
   // Drag state
@@ -91,7 +90,6 @@ export default function Tasks() {
     if (isNew) {
       const updated = [...tasks, { ...newForm, id: Date.now(), sortOrder: tasks.length }];
       await updateTasks(updated);
-      setShowNewForm(false);
       setNewForm({ ...EMPTY_TASK });
       showToast('Task added');
     } else {
