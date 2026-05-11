@@ -62,8 +62,6 @@ export default function Kickoff() {
     setSections(JSON.parse(JSON.stringify(activeProject?.questionnaire?.sections || [])));
   }
 
-  if (!activeProject) return <EmptyState message="No project selected." />;
-
   // Update local state only (no Supabase call) — fast, no re-render cascade
   const setAnswer = useCallback((secIdx, qIdx, value) => {
     setSections(prev => prev.map((s, si) => si !== secIdx ? s : {
@@ -79,7 +77,7 @@ export default function Kickoff() {
         ...s,
         questions: s.questions.map((q, qi) => qi !== qIdx ? q : { ...q, answer: value }),
       });
-      updateQuestionnaire(updated); // fire-and-forget
+      updateQuestionnaire(updated);
       return updated;
     });
   }, [updateQuestionnaire]);
@@ -91,6 +89,8 @@ export default function Kickoff() {
       return updated;
     });
   }, [updateQuestionnaire]);
+
+  if (!activeProject) return <EmptyState message="No project selected." />;
 
   const handleSave = async () => {
     setSaving(true);
