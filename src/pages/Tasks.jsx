@@ -30,7 +30,7 @@ function TaskRow({ task, idx, onEdit }) {
 }
 
 export default function Tasks() {
-  const { activeProject, tasks, updateSingleTask, showToast } = useApp();
+  const { activeProject, tasks, updateSingleTask, updateTasks, showToast } = useApp();
   const { dialog } = useConfirm();
   const [filterPhase, setFilterPhase] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -58,14 +58,73 @@ export default function Tasks() {
     showToast('Task updated');
   };
 
+  // ── Export ────────────────────────────────────────────────────
   const exportXlsx = () => {
-    const rows = [['#', 'Phase', 'Item', 'Task', 'Type', 'Responsible', 'Owner Status', 'Reviewer Status', 'Expected Effort', 'Actual Effort', 'Comments']];
-    tasks.forEach((t, i) => rows.push([i + 1, t.phase, t.item, t.task, t.taskType, t.responsible, t.ownerStatus, t.reviewerStatus, t.expectedEffort, t.actualEffort, t.comments]));
+    const headers = ['#','Phase','Item','Task','Type','Tags','Responsible','Owner','Reviewer',
+      'Owner Status','Reviewer Status','Expected Start','Expected End',
+      'Actual Start','Actual End','Expected Effort (h)','Actual Effort (h)','Comments'];
+    const rows = [headers];
+    tasks.forEach((t, i) => rows.push([
+      i + 1, t.phase, t.item, t.task, t.taskType, t.tags, t.responsible, t.owner, t.reviewer,
+      t.ownerStatus, t.reviewerStatus, t.expectedStart, t.expectedEnd,
+      t.actualStart, t.actualEnd, t.expectedEffort, t.actualEffort, t.comments,
+    ]));
     const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [4,18,22,60,16,8,28,28,22,14,14,13,13,13,13,10,10,40].map(wch => ({ wch }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Tasks');
     XLSX.writeFile(wb, `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}_Tasks.xlsx`);
     showToast('Exported to Excel');
+  };
+
+  // ── Import ────────────────────────────────────────────────────
+  // Matches rows back to existing tasks by Phase+Item+Task text (columns B+C+D).
+  // Only updates status, dates, effort and comments — never replaces task structure.
+  const importXlsx = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // Build lookup: "phase||item||task" → row data (cols 9-17, 0-indexed)
+        const lookup = {};
+        data.slice(1).forEach(row => {
+          const key = `${row[1]||''}||${row[2]||''}||${row[3]||''}`;
+          lookup[key] = row;
+        });
+
+        let matched = 0;
+        const updated = tasks.map(t => {
+          const key = `${t.phase}||${t.item}||${t.task}`;
+          const row = lookup[key];
+          if (!row) return t;
+          matched++;
+          return {
+            ...t,
+            ownerStatus:    row[9]  || t.ownerStatus,
+            reviewerStatus: row[10] || t.reviewerStatus,
+            expectedStart:  row[11] || t.expectedStart,
+            expectedEnd:    row[12] || t.expectedEnd,
+            actualStart:    row[13] || t.actualStart,
+            actualEnd:      row[14] || t.actualEnd,
+            expectedEffort: row[15] != null ? String(row[15]) : t.expectedEffort,
+            actualEffort:   row[16] != null ? String(row[16]) : t.actualEffort,
+            comments:       row[17] || t.comments,
+          };
+        });
+
+        updateTasks(updated);
+        showToast(`Imported updates for ${matched} of ${tasks.length} tasks`);
+      } catch {
+        showToast('Import failed — check the file format', 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
   };
 
   return (
@@ -75,8 +134,21 @@ export default function Tasks() {
         breadcrumb={`Implementation Hub › ${activeProject.name}`}
         title="Tasks & Checklist"
         subtitle={`${tasks.length} tasks · ${done} done · ${inprog} in progress · ${blocked} blocked`}
-        actions={<button className="btn btn-ghost" onClick={exportXlsx}>↓ Export Excel</button>}
+        actions={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <label className="btn btn-ghost" style={{ cursor: 'pointer', margin: 0 }}>
+              ↑ Import Excel
+              <input type="file" accept=".xlsx,.xls" onChange={importXlsx} style={{ display: 'none' }} />
+            </label>
+            <button className="btn btn-ghost" onClick={exportXlsx}>↓ Export Excel</button>
+          </div>
+        }
       />
+
+      {/* Import instructions banner */}
+      <div style={{ background: '#e3f2fd', borderBottom: '1px solid #bbdefb', padding: '7px 20px', fontSize: 12, color: '#1565c0', flexShrink: 0 }}>
+        <strong>Import tip:</strong> Export first, update the <strong>Status, Dates, Effort</strong> and <strong>Comments</strong> columns in Excel, then re-import. Tasks are matched by Phase + Item + Task text.
+      </div>
 
       {/* Toolbar */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
