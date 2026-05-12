@@ -144,39 +144,111 @@ export default function Tasks() {
   };
 
   // ── Import ────────────────────────────────────────────────────
+  // ── Import ────────────────────────────────────────────────────
+  // Excel is the source of truth for this project's task list.
+  // Strategy:
+  //   1. Read every data row from the Excel (skip header, skip blank rows).
+  //   2. Match each Excel row to an existing DB task by Phase+Item+Task text
+  //      — if matched, reuse the DB id so Supabase updates in-place.
+  //   3. New rows in Excel (no match) are inserted as fresh tasks.
+  //   4. Rows deleted from Excel are dropped from the project.
+  //   5. ONLY touches this project's rows via updateTasks() — the global
+  //      `templates` table is never written, so the template library is safe.
   const importXlsx = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const lookup = {};
-        data.slice(1).forEach(row => {
-          const key = `${row[1]||''}||${row[2]||''}||${row[3]||''}`;
-          lookup[key] = row;
+        // header:1 → plain arrays; defval:'' so missing cells are '' not undefined
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        // Skip header row and any completely blank rows
+        const dataRows = data.slice(1).filter(row =>
+          row.some(cell => cell !== '' && cell != null)
+        );
+
+        if (dataRows.length === 0) {
+          showToast('No data rows found in the file', 'error');
+          e.target.value = '';
+          return;
+        }
+
+        // Build lookup from existing tasks by Phase||Item||Task for id reuse
+        const existingByKey = {};
+        tasks.forEach(t => {
+          const k = `${t.phase}||${t.item}||${t.task}`;
+          existingByKey[k] = t;
         });
-        let matched = 0;
-        const updated = tasks.map(t => {
-          const row = lookup[`${t.phase}||${t.item}||${t.task}`];
-          if (!row) return t;
-          matched++;
-          return { ...t,
-            ownerStatus:    row[9]  || t.ownerStatus,
-            reviewerStatus: row[10] || t.reviewerStatus,
-            expectedStart:  row[11] || t.expectedStart,
-            expectedEnd:    row[12] || t.expectedEnd,
-            actualStart:    row[13] || t.actualStart,
-            actualEnd:      row[14] || t.actualEnd,
-            expectedEffort: row[15] != null ? String(row[15]) : t.expectedEffort,
-            actualEffort:   row[16] != null ? String(row[16]) : t.actualEffort,
-            comments:       row[17] || t.comments,
+
+        // Normalise a cell to a clean string
+        const str = (v) => (v == null ? '' : String(v)).trim();
+
+        // Normalise date cells — XLSX can return JS Date objects (cellDates:true),
+        // Excel serials (numbers), or ISO strings
+        const dateStr = (v) => {
+          if (!v && v !== 0) return '';
+          if (v instanceof Date) {
+            const y = v.getFullYear(), m = v.getMonth()+1, d = v.getDate();
+            return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          }
+          return str(v);
+        };
+
+        let matched = 0, added = 0;
+
+        // Export column layout (Tasks.jsx exportXlsx):
+        // [0]#  [1]Phase  [2]Item  [3]Task  [4]Type  [5]Tags
+        // [6]Responsible  [7]Owner  [8]Reviewer
+        // [9]OwnerStatus  [10]ReviewerStatus
+        // [11]ExpStart  [12]ExpEnd  [13]ActStart  [14]ActEnd
+        // [15]ExpEffort  [16]ActEffort  [17]Comments
+        const importedTasks = dataRows.map((row, i) => {
+          const phase = str(row[1]);
+          const item  = str(row[2]);
+          const task  = str(row[3]);
+          const key   = `${phase}||${item}||${task}`;
+          const ex    = existingByKey[key];
+
+          if (ex) matched++; else added++;
+
+          return {
+            id:              ex ? ex.id : undefined,   // reuse DB id to update; undefined = insert
+            sortOrder:       i,
+            phase,
+            item,
+            task,
+            taskType:        str(row[4]) || ex?.taskType        || 'BA Checklist Item',
+            tags:            str(row[5]),
+            responsible:     str(row[6]) || ex?.responsible     || '',
+            owner:           str(row[7]) || ex?.owner           || '',
+            reviewer:        str(row[8]) || ex?.reviewer        || '',
+            ownerStatus:     str(row[9])  || ex?.ownerStatus    || 'Not Started',
+            reviewerStatus:  str(row[10]) || ex?.reviewerStatus || 'Not Started',
+            expectedStart:   dateStr(row[11]),
+            expectedEnd:     dateStr(row[12]),
+            actualStart:     dateStr(row[13]),
+            actualEnd:       dateStr(row[14]),
+            expectedEffort:  row[15] !== '' && row[15] != null ? str(row[15]) : (ex?.expectedEffort  || ''),
+            actualEffort:    row[16] !== '' && row[16] != null ? str(row[16]) : (ex?.actualEffort    || ''),
+            actualElapsed:   ex?.actualElapsed    || '',
+            expectedElapsed: ex?.expectedElapsed  || '',
+            comments:        str(row[17]),
           };
         });
-        updateTasks(updated);
-        showToast(`Updated ${matched} of ${tasks.length} tasks`);
-      } catch { showToast('Import failed — check file format', 'error'); }
+
+        const removed = tasks.length - matched;
+        // updateTasks writes ONLY to Supabase `tasks` table scoped to activeProjectId
+        updateTasks(importedTasks);
+        showToast(
+          `Imported ${importedTasks.length} tasks · ${matched} updated · ${added} new` +
+          (removed > 0 ? ` · ${removed} removed` : '')
+        );
+      } catch (err) {
+        console.error('Import error:', err);
+        showToast('Import failed — check file format', 'error');
+      }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
