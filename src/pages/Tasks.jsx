@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 const STATUSES  = ADMIN_LISTS.statuses;
 const PHASES    = ADMIN_LISTS.phases;
 const RESP_LIST = ADMIN_LISTS.responsibles;
+const TASK_TYPES = ['BA Checklist Item', 'Dev Task'];
 
 const EMPTY_TASK = {
   phase: 'Project Creation', item: '', task: '', taskType: 'BA Checklist Item', tags: '',
@@ -16,8 +17,74 @@ const EMPTY_TASK = {
   actualEffort: '', expectedEffort: '', actualElapsed: '', expectedElapsed: '',
 };
 
-// ── Drag-and-drop row ─────────────────────────────────────────
+// Column definitions — matches template library order exactly
+const COLS = [
+  { key: '_drag',          label: '',              width: 22,  filterable: false },
+  { key: '_num',           label: '#',             width: 36,  filterable: false },
+  { key: 'phase',          label: 'Phase',         width: 140, filterable: true,  type: 'select', options: PHASES },
+  { key: 'item',           label: 'Item',          width: 140, filterable: true,  type: 'text' },
+  { key: 'task',           label: 'Task',          width: 320, filterable: true,  type: 'text' },
+  { key: 'taskType',       label: 'Type',          width: 100, filterable: true,  type: 'select', options: TASK_TYPES },
+  { key: 'responsible',    label: 'Responsible',   width: 160, filterable: true,  type: 'select', options: RESP_LIST },
+  { key: 'ownerStatus',    label: 'Owner Status',  width: 110, filterable: true,  type: 'select', options: STATUSES },
+  { key: 'reviewerStatus', label: 'Rev. Status',   width: 110, filterable: true,  type: 'select', options: STATUSES },
+  { key: 'expectedStart',  label: 'Exp. Start',    width: 96,  filterable: false },
+  { key: 'expectedEnd',    label: 'Exp. End',      width: 96,  filterable: false },
+  { key: 'actualStart',    label: 'Act. Start',    width: 96,  filterable: false },
+  { key: 'actualEnd',      label: 'Act. End',      width: 96,  filterable: false },
+  { key: 'expectedEffort', label: 'Exp. Effort',   width: 80,  filterable: false },
+  { key: 'actualEffort',   label: 'Act. Effort',   width: 80,  filterable: false },
+  { key: '_edit',          label: '',              width: 36,  filterable: false },
+];
+
+// Header-aware column map for import.
+// Maps normalised Excel header text -> internal field key.
+// Handles both the app's own export headers and the original template Excel headers.
+const HEADER_MAP = {
+  // app export headers
+  'phase':                 'phase',
+  'item':                  'item',
+  'task':                  'task',
+  'type':                  'taskType',
+  'tags':                  'tags',
+  'responsible':           'responsible',
+  'owner':                 'owner',
+  'reviewer':              'reviewer',
+  'owner status':          'ownerStatus',
+  'reviewer status':       'reviewerStatus',
+  'exp. start':            'expectedStart',
+  'exp. end':              'expectedEnd',
+  'act. start':            'actualStart',
+  'act. end':              'actualEnd',
+  'exp. effort (h)':       'expectedEffort',
+  'act. effort (h)':       'actualEffort',
+  'comments':              'comments',
+  // original template Excel headers
+  'task type':             'taskType',
+  'actual start date':     'actualStart',
+  'actual end date':       'actualEnd',
+  'expected start date':   'expectedStart',
+  'expected end date':     'expectedEnd',
+  'actual effort spent':   'actualEffort',
+  'expected effort spent': 'expectedEffort',
+};
+
+function TypeBadge({ type }) {
+  const isDev = type === 'Dev Task';
+  return (
+    <span style={{
+      display: 'inline-block', fontSize: 10, fontWeight: 500,
+      padding: '2px 6px', borderRadius: 3, whiteSpace: 'nowrap',
+      background: isDev ? '#fff3e0' : '#e3f2fd',
+      color:      isDev ? '#e65100' : '#1565c0',
+    }}>
+      {isDev ? 'Dev' : 'BA'}
+    </span>
+  );
+}
+
 function TaskRow({ task, idx, onEdit, onDragStart, onDragOver, onDrop, onDragEnd, isDragging }) {
+  const base = isDragging ? '#eef0ff' : idx % 2 === 0 ? '#fafafe' : '#fff';
   return (
     <tr
       draggable
@@ -25,90 +92,106 @@ function TaskRow({ task, idx, onEdit, onDragStart, onDragOver, onDrop, onDragEnd
       onDragOver={e => { e.preventDefault(); onDragOver(idx); }}
       onDrop={() => onDrop(idx)}
       onDragEnd={onDragEnd}
-      style={{
-        borderBottom: '1px solid #f0f0f0',
-        background: isDragging ? '#eef0ff' : idx % 2 === 0 ? '#fafafe' : '#fff',
-        opacity: isDragging ? 0.5 : 1,
-        cursor: 'grab',
-      }}
+      style={{ borderBottom: '1px solid #f0f0f0', background: base, opacity: isDragging ? 0.5 : 1 }}
       onMouseEnter={e => { if (!isDragging) e.currentTarget.style.background = '#f0f4ff'; }}
-      onMouseLeave={e => { if (!isDragging) e.currentTarget.style.background = idx % 2 === 0 ? '#fafafe' : '#fff'; }}
+      onMouseLeave={e => { if (!isDragging) e.currentTarget.style.background = base; }}
     >
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#ccc', cursor: 'grab', userSelect: 'none' }}>⠿</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#888' }}>{idx + 1}</td>
-      <td style={{ padding: '5px 6px', fontSize: 12, color: '#404041', borderLeft: `3px solid ${task.taskType === 'Dev Task' ? '#da9b38' : '#2278cf'}`, maxWidth: 340 }}>
-        <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 500, padding: '2px 5px', borderRadius: 3, textTransform: 'uppercase', background: task.taskType === 'Dev Task' ? '#fff3e0' : '#e3f2fd', color: task.taskType === 'Dev Task' ? '#e65100' : '#1565c0', marginRight: 5, whiteSpace: 'nowrap' }}>{task.taskType === 'Dev Task' ? 'Dev' : 'BA'}</span>
-        {task.task}
-      </td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.phase}</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666' }}>{task.item}</td>
+      <td style={{ padding: '5px 4px', fontSize: 11, color: '#ccc', cursor: 'grab', userSelect: 'none', textAlign: 'center' }}>⠿</td>
+      <td style={{ padding: '5px 4px', fontSize: 11, color: '#aaa', textAlign: 'right' }}>{idx + 1}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.phase}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.item}</td>
+      <td style={{ padding: '5px 6px', fontSize: 12, color: '#404041', borderLeft: `3px solid ${task.taskType === 'Dev Task' ? '#da9b38' : '#2278cf'}`, overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.task}</td>
+      <td style={{ padding: '5px 6px' }}><TypeBadge type={task.taskType} /></td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.responsible}</td>
       <td style={{ padding: '5px 6px' }}><StatusBadge status={task.ownerStatus || 'Not Started'} /></td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.expectedStart || '—'}</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.expectedEnd   || '—'}</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.actualStart   || '—'}</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.actualEnd     || '—'}</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.expectedEffort ? `${task.expectedEffort}h` : '—'}</td>
-      <td style={{ padding: '5px 6px', fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{task.actualEffort  ? `${task.actualEffort}h`  : '—'}</td>
-      <td style={{ padding: '5px 6px' }}>
+      <td style={{ padding: '5px 6px' }}><StatusBadge status={task.reviewerStatus || 'Not Started'} /></td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#777', whiteSpace: 'nowrap' }}>{task.expectedStart || '—'}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#777', whiteSpace: 'nowrap' }}>{task.expectedEnd   || '—'}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#777', whiteSpace: 'nowrap' }}>{task.actualStart   || '—'}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#777', whiteSpace: 'nowrap' }}>{task.actualEnd     || '—'}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#777', textAlign: 'right' }}>{task.expectedEffort ? `${task.expectedEffort}h` : '—'}</td>
+      <td style={{ padding: '5px 6px', fontSize: 11, color: '#777', textAlign: 'right' }}>{task.actualEffort   ? `${task.actualEffort}h`  : '—'}</td>
+      <td style={{ padding: '5px 4px', textAlign: 'center' }}>
         <button className="btn btn-ghost btn-xs" onClick={() => onEdit(task)}>✎</button>
       </td>
     </tr>
   );
 }
 
+function ColFilter({ col, value, onChange }) {
+  if (!col.filterable) {
+    return <th style={{ padding: '2px 4px', background: '#e8e8f0', borderBottom: '2px solid #c0c0d0', borderRight: '1px solid #d8d8e8' }} />;
+  }
+  const base = {
+    width: '100%', fontSize: 11, border: '1px solid #c8c8d8', borderRadius: 3,
+    padding: '3px 5px', fontFamily: 'Roboto,sans-serif', background: '#fff',
+    boxSizing: 'border-box', color: '#333',
+  };
+  if (col.type === 'select') {
+    return (
+      <th style={{ padding: '2px 4px', background: '#e8e8f0', borderBottom: '2px solid #c0c0d0', borderRight: '1px solid #d8d8e8' }}>
+        <select value={value} onChange={e => onChange(e.target.value)} style={base}>
+          <option value="">All</option>
+          {col.options.map(o => <option key={o}>{o}</option>)}
+        </select>
+      </th>
+    );
+  }
+  return (
+    <th style={{ padding: '2px 4px', background: '#e8e8f0', borderBottom: '2px solid #c0c0d0', borderRight: '1px solid #d8d8e8' }}>
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder="Filter…" style={base} />
+    </th>
+  );
+}
+
 export default function Tasks() {
   const { activeProject, tasks, updateTasks, updateSingleTask, showToast } = useApp();
   const { dialog } = useConfirm();
-  const [filterPhase,  setFilterPhase]  = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterText,   setFilterText]   = useState('');
-  const [editTask,  setEditTask]  = useState(null);
-  const [editForm,  setEditForm]  = useState({});
-  const [isNew,     setIsNew]     = useState(false);
-  const [newForm,   setNewForm]   = useState({ ...EMPTY_TASK });
 
-  // Drag state
+  const [colFilters, setColFilters] = useState({});
+  const setFilter = (key, val) => setColFilters(prev => ({ ...prev, [key]: val }));
+
+  const [editTask, setEditTask] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [isNew,    setIsNew]    = useState(false);
+  const [newForm,  setNewForm]  = useState({ ...EMPTY_TASK });
+
   const dragIdx = useRef(null);
   const [dragOver, setDragOver] = useState(null);
 
-  const filtered = useMemo(() => tasks.filter(t =>
-    (!filterPhase  || t.phase === filterPhase) &&
-    (!filterStatus || t.ownerStatus === filterStatus) &&
-    (!filterText   || t.task?.toLowerCase().includes(filterText.toLowerCase()) || t.item?.toLowerCase().includes(filterText.toLowerCase()))
-  ), [tasks, filterPhase, filterStatus, filterText]);
+  const filtered = useMemo(() => tasks.filter(t => {
+    for (const col of COLS) {
+      const val = (colFilters[col.key] || '').toLowerCase().trim();
+      if (!val) continue;
+      const cell = (t[col.key] || '').toString().toLowerCase();
+      if (!cell.includes(val)) return false;
+    }
+    return true;
+  }), [tasks, colFilters]);
+
+  const hasFilters = Object.values(colFilters).some(v => v);
+  const canDrag    = !hasFilters;
 
   if (!activeProject) return <EmptyState message="No project selected." />;
 
   const done    = tasks.filter(t => t.ownerStatus === 'Done').length;
   const inprog  = tasks.filter(t => t.ownerStatus === 'In Progress').length;
-  const blocked = tasks.filter(t => ['Blocked','Delayed'].includes(t.ownerStatus)).length;
+  const blocked = tasks.filter(t => ['Blocked', 'Delayed'].includes(t.ownerStatus)).length;
 
-  // ── Edit existing ─────────────────────────────────────────────
   const openEdit = (task) => { setIsNew(false); setEditTask(task); setEditForm({ ...task }); };
+  const openNew  = () => { setNewForm({ ...EMPTY_TASK }); setIsNew(true); setEditTask({}); };
 
   const saveEdit = async () => {
     if (isNew) {
-      const updated = [...tasks, { ...newForm, id: Date.now(), sortOrder: tasks.length }];
-      await updateTasks(updated);
+      await updateTasks([...tasks, { ...newForm, id: Date.now(), sortOrder: tasks.length }]);
       setNewForm({ ...EMPTY_TASK });
       showToast('Task added');
     } else {
       await updateSingleTask(editTask.id, editForm);
-      setEditTask(null);
       showToast('Task updated');
     }
+    setEditTask(null); setIsNew(false);
   };
-
-  // ── Add new ───────────────────────────────────────────────────
-  const openNew = () => {
-    setNewForm({ ...EMPTY_TASK });
-    setIsNew(true);
-    setEditTask({});
-  };
-
-  // ── Drag and drop reorder ─────────────────────────────────────
-  // Only works when no filters active (reorder on full list)
-  const canDrag = !filterPhase && !filterStatus && !filterText;
 
   const handleDragStart = (idx) => { dragIdx.current = idx; };
   const handleDragOver  = (idx) => { setDragOver(idx); };
@@ -118,129 +201,121 @@ export default function Tasks() {
     const [moved] = reordered.splice(dragIdx.current, 1);
     reordered.splice(dropIdx, 0, moved);
     await updateTasks(reordered);
-    dragIdx.current = null;
-    setDragOver(null);
+    dragIdx.current = null; setDragOver(null);
     showToast('Task order updated');
   };
   const handleDragEnd = () => { dragIdx.current = null; setDragOver(null); };
 
-  // ── Export ────────────────────────────────────────────────────
+  // Export — column order is canonical; import reads by these header names
   const exportXlsx = () => {
-    const headers = ['#','Phase','Item','Task','Type','Tags','Responsible','Owner','Reviewer',
-      'Owner Status','Reviewer Status','Exp. Start','Exp. End','Act. Start','Act. End',
-      'Exp. Effort (h)','Act. Effort (h)','Comments'];
+    const headers = ['#', 'Phase', 'Item', 'Task', 'Type', 'Tags', 'Responsible', 'Owner', 'Reviewer',
+      'Owner Status', 'Reviewer Status', 'Exp. Start', 'Exp. End', 'Act. Start', 'Act. End',
+      'Exp. Effort (h)', 'Act. Effort (h)', 'Comments'];
     const rows = [headers];
     tasks.forEach((t, i) => rows.push([
-      i+1, t.phase, t.item, t.task, t.taskType, t.tags, t.responsible, t.owner, t.reviewer,
-      t.ownerStatus, t.reviewerStatus, t.expectedStart, t.expectedEnd,
-      t.actualStart, t.actualEnd, t.expectedEffort, t.actualEffort, t.comments,
+      i + 1, t.phase, t.item, t.task, t.taskType, t.tags,
+      t.responsible, t.owner, t.reviewer,
+      t.ownerStatus, t.reviewerStatus,
+      t.expectedStart, t.expectedEnd, t.actualStart, t.actualEnd,
+      t.expectedEffort, t.actualEffort, t.comments,
     ]));
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [4,18,22,60,8,8,28,28,22,14,14,11,11,11,11,10,10,40].map(wch => ({ wch }));
+    ws['!cols'] = [4, 18, 22, 60, 14, 8, 28, 28, 22, 14, 14, 11, 11, 11, 11, 10, 10, 40].map(wch => ({ wch }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Tasks');
     XLSX.writeFile(wb, `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}_Tasks.xlsx`);
     showToast('Exported to Excel');
   };
 
-  // ── Import ────────────────────────────────────────────────────
-  // ── Import ────────────────────────────────────────────────────
-  // Excel is the source of truth for this project's task list.
-  // Strategy:
-  //   1. Read every data row from the Excel (skip header, skip blank rows).
-  //   2. Match each Excel row to an existing DB task by Phase+Item+Task text
-  //      — if matched, reuse the DB id so Supabase updates in-place.
-  //   3. New rows in Excel (no match) are inserted as fresh tasks.
-  //   4. Rows deleted from Excel are dropped from the project.
-  //   5. ONLY touches this project's rows via updateTasks() — the global
-  //      `templates` table is never written, so the template library is safe.
+  // Import — header-aware; handles app export AND original template Excel formats.
+  // Excel is source of truth: new rows inserted, deleted rows dropped.
+  // ONLY writes to this project's Supabase tasks rows — template library untouched.
   const importXlsx = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        // header:1 → plain arrays; defval:'' so missing cells are '' not undefined
+        const wb   = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (data.length < 2) { showToast('File has no data rows', 'error'); e.target.value = ''; return; }
 
-        // Skip header row and any completely blank rows
-        const dataRows = data.slice(1).filter(row =>
-          row.some(cell => cell !== '' && cell != null)
-        );
-
-        if (dataRows.length === 0) {
-          showToast('No data rows found in the file', 'error');
-          e.target.value = '';
-          return;
-        }
-
-        // Build lookup from existing tasks by Phase||Item||Task for id reuse
-        const existingByKey = {};
-        tasks.forEach(t => {
-          const k = `${t.phase}||${t.item}||${t.task}`;
-          existingByKey[k] = t;
+        // Map column index -> field key from header row
+        const headerRow = data[0];
+        const colIdx = {};
+        headerRow.forEach((h, i) => {
+          const norm  = String(h).toLowerCase().trim();
+          const field = HEADER_MAP[norm];
+          if (field !== undefined && field !== null) colIdx[i] = field;
         });
 
-        // Normalise a cell to a clean string
-        const str = (v) => (v == null ? '' : String(v)).trim();
+        if (!Object.values(colIdx).includes('phase') || !Object.values(colIdx).includes('task')) {
+          showToast('Could not find Phase or Task columns — check the file format', 'error');
+          e.target.value = ''; return;
+        }
 
-        // Normalise date cells — XLSX can return JS Date objects (cellDates:true),
-        // Excel serials (numbers), or ISO strings
+        const dataRows = data.slice(1).filter(row => row.some(c => c !== '' && c != null));
+        if (dataRows.length === 0) { showToast('No data rows found', 'error'); e.target.value = ''; return; }
+
+        const existingByKey = {};
+        tasks.forEach(t => { existingByKey[`${t.phase}||${t.item}||${t.task}`] = t; });
+
+        const str = (v) => (v == null ? '' : String(v)).trim();
         const dateStr = (v) => {
           if (!v && v !== 0) return '';
           if (v instanceof Date) {
-            const y = v.getFullYear(), m = v.getMonth()+1, d = v.getDate();
-            return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const y = v.getFullYear(), m = v.getMonth() + 1, d = v.getDate();
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           }
           return str(v);
         };
+        const DATE_FIELDS = new Set(['expectedStart', 'expectedEnd', 'actualStart', 'actualEnd']);
+        const NUM_FIELDS  = new Set(['expectedEffort', 'actualEffort']);
 
         let matched = 0, added = 0;
 
-        // Export column layout (Tasks.jsx exportXlsx):
-        // [0]#  [1]Phase  [2]Item  [3]Task  [4]Type  [5]Tags
-        // [6]Responsible  [7]Owner  [8]Reviewer
-        // [9]OwnerStatus  [10]ReviewerStatus
-        // [11]ExpStart  [12]ExpEnd  [13]ActStart  [14]ActEnd
-        // [15]ExpEffort  [16]ActEffort  [17]Comments
         const importedTasks = dataRows.map((row, i) => {
-          const phase = str(row[1]);
-          const item  = str(row[2]);
-          const task  = str(row[3]);
-          const key   = `${phase}||${item}||${task}`;
-          const ex    = existingByKey[key];
+          const raw = {};
+          Object.entries(colIdx).forEach(([idx, field]) => { raw[field] = row[idx]; });
 
+          const phase = str(raw.phase || '');
+          const item  = str(raw.item  || '');
+          const task  = str(raw.task  || '');
+          const ex    = existingByKey[`${phase}||${item}||${task}`];
           if (ex) matched++; else added++;
 
+          const resolve = (field, fallback) => {
+            const v = raw[field];
+            if (DATE_FIELDS.has(field)) return dateStr(v);
+            if (NUM_FIELDS.has(field))  return (v !== '' && v != null) ? str(v) : (ex?.[field] || '');
+            return (v !== '' && v != null) ? str(v) : (ex?.[field] || fallback || '');
+          };
+
           return {
-            id:              ex ? ex.id : undefined,   // reuse DB id to update; undefined = insert
+            id:              ex ? ex.id : undefined,
             sortOrder:       i,
-            phase,
-            item,
-            task,
-            taskType:        str(row[4]) || ex?.taskType        || 'BA Checklist Item',
-            tags:            str(row[5]),
-            responsible:     str(row[6]) || ex?.responsible     || '',
-            owner:           str(row[7]) || ex?.owner           || '',
-            reviewer:        str(row[8]) || ex?.reviewer        || '',
-            ownerStatus:     str(row[9])  || ex?.ownerStatus    || 'Not Started',
-            reviewerStatus:  str(row[10]) || ex?.reviewerStatus || 'Not Started',
-            expectedStart:   dateStr(row[11]),
-            expectedEnd:     dateStr(row[12]),
-            actualStart:     dateStr(row[13]),
-            actualEnd:       dateStr(row[14]),
-            expectedEffort:  row[15] !== '' && row[15] != null ? str(row[15]) : (ex?.expectedEffort  || ''),
-            actualEffort:    row[16] !== '' && row[16] != null ? str(row[16]) : (ex?.actualEffort    || ''),
-            actualElapsed:   ex?.actualElapsed    || '',
-            expectedElapsed: ex?.expectedElapsed  || '',
-            comments:        str(row[17]),
+            phase, item, task,
+            taskType:        resolve('taskType',       'BA Checklist Item'),
+            tags:            resolve('tags',           ''),
+            responsible:     resolve('responsible',    ''),
+            owner:           resolve('owner',          ''),
+            reviewer:        resolve('reviewer',       ''),
+            ownerStatus:     resolve('ownerStatus',    'Not Started'),
+            reviewerStatus:  resolve('reviewerStatus', 'Not Started'),
+            expectedStart:   dateStr(raw.expectedStart),
+            expectedEnd:     dateStr(raw.expectedEnd),
+            actualStart:     dateStr(raw.actualStart),
+            actualEnd:       dateStr(raw.actualEnd),
+            expectedEffort:  resolve('expectedEffort', ''),
+            actualEffort:    resolve('actualEffort',   ''),
+            actualElapsed:   ex?.actualElapsed   || '',
+            expectedElapsed: ex?.expectedElapsed || '',
+            comments:        resolve('comments',       ''),
           };
         });
 
         const removed = tasks.length - matched;
-        // updateTasks writes ONLY to Supabase `tasks` table scoped to activeProjectId
-        updateTasks(importedTasks);
+        updateTasks(importedTasks); // scoped to activeProjectId — template library untouched
         showToast(
           `Imported ${importedTasks.length} tasks · ${matched} updated · ${added} new` +
           (removed > 0 ? ` · ${removed} removed` : '')
@@ -257,41 +332,52 @@ export default function Tasks() {
   const formFields = (form, setForm) => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
       <Field label="Phase">
-        <Select value={form.phase||''} onChange={e => setForm(p=>({...p,phase:e.target.value}))}>
+        <Select value={form.phase || ''} onChange={e => setForm(p => ({ ...p, phase: e.target.value }))}>
           {PHASES.map(p => <option key={p}>{p}</option>)}
         </Select>
       </Field>
       <Field label="Task Type">
-        <Select value={form.taskType||''} onChange={e => setForm(p=>({...p,taskType:e.target.value}))}>
-          <option>BA Checklist Item</option><option>Dev Task</option>
+        <Select value={form.taskType || ''} onChange={e => setForm(p => ({ ...p, taskType: e.target.value }))}>
+          {TASK_TYPES.map(t => <option key={t}>{t}</option>)}
         </Select>
       </Field>
-      <Field label="Item"><Input value={form.item||''} onChange={e => setForm(p=>({...p,item:e.target.value}))} placeholder="e.g. BRD Preparation" /></Field>
+      <Field label="Item">
+        <Input value={form.item || ''} onChange={e => setForm(p => ({ ...p, item: e.target.value }))} placeholder="e.g. BRD Preparation" />
+      </Field>
       <Field label="Responsible">
-        <Select value={form.responsible||''} onChange={e => setForm(p=>({...p,responsible:e.target.value}))}>
+        <Select value={form.responsible || ''} onChange={e => setForm(p => ({ ...p, responsible: e.target.value }))}>
           {RESP_LIST.map(r => <option key={r}>{r}</option>)}
         </Select>
       </Field>
-      <Field label="Task Description" style={{gridColumn:'1/-1'}}>
-        <Textarea value={form.task||''} onChange={e => setForm(p=>({...p,task:e.target.value}))} placeholder="Describe the task…" style={{ minHeight: 70 }} />
+      <Field label="Task Description" style={{ gridColumn: '1/-1' }}>
+        <Textarea value={form.task || ''} onChange={e => setForm(p => ({ ...p, task: e.target.value }))} placeholder="Describe the task…" style={{ minHeight: 70 }} />
+      </Field>
+      <Field label="Owner">
+        <Input value={form.owner || ''} onChange={e => setForm(p => ({ ...p, owner: e.target.value }))} />
+      </Field>
+      <Field label="Reviewer">
+        <Input value={form.reviewer || ''} onChange={e => setForm(p => ({ ...p, reviewer: e.target.value }))} />
       </Field>
       <Field label="Owner Status">
-        <Select value={form.ownerStatus||''} onChange={e => setForm(p=>({...p,ownerStatus:e.target.value}))}>
+        <Select value={form.ownerStatus || ''} onChange={e => setForm(p => ({ ...p, ownerStatus: e.target.value }))}>
           {STATUSES.map(s => <option key={s}>{s}</option>)}
         </Select>
       </Field>
       <Field label="Reviewer Status">
-        <Select value={form.reviewerStatus||''} onChange={e => setForm(p=>({...p,reviewerStatus:e.target.value}))}>
+        <Select value={form.reviewerStatus || ''} onChange={e => setForm(p => ({ ...p, reviewerStatus: e.target.value }))}>
           {STATUSES.map(s => <option key={s}>{s}</option>)}
         </Select>
       </Field>
-      <Field label="Expected Start"><Input type="date" value={form.expectedStart||''} onChange={e => setForm(p=>({...p,expectedStart:e.target.value}))} /></Field>
-      <Field label="Expected End">  <Input type="date" value={form.expectedEnd||''}   onChange={e => setForm(p=>({...p,expectedEnd:e.target.value}))} /></Field>
-      <Field label="Actual Start">  <Input type="date" value={form.actualStart||''}   onChange={e => setForm(p=>({...p,actualStart:e.target.value}))} /></Field>
-      <Field label="Actual End">    <Input type="date" value={form.actualEnd||''}     onChange={e => setForm(p=>({...p,actualEnd:e.target.value}))} /></Field>
-      <Field label="Expected Effort (h)"><Input type="number" value={form.expectedEffort||''} onChange={e => setForm(p=>({...p,expectedEffort:e.target.value}))} /></Field>
-      <Field label="Actual Effort (h)">  <Input type="number" value={form.actualEffort||''}  onChange={e => setForm(p=>({...p,actualEffort:e.target.value}))} /></Field>
-      <Field label="Comments" style={{gridColumn:'1/-1'}}><Textarea value={form.comments||''} onChange={e => setForm(p=>({...p,comments:e.target.value}))} /></Field>
+      <Field label="Expected Start"><Input type="date" value={form.expectedStart || ''} onChange={e => setForm(p => ({ ...p, expectedStart: e.target.value }))} /></Field>
+      <Field label="Expected End">  <Input type="date" value={form.expectedEnd   || ''} onChange={e => setForm(p => ({ ...p, expectedEnd:   e.target.value }))} /></Field>
+      <Field label="Actual Start">  <Input type="date" value={form.actualStart   || ''} onChange={e => setForm(p => ({ ...p, actualStart:   e.target.value }))} /></Field>
+      <Field label="Actual End">    <Input type="date" value={form.actualEnd     || ''} onChange={e => setForm(p => ({ ...p, actualEnd:     e.target.value }))} /></Field>
+      <Field label="Expected Effort (h)"><Input type="number" value={form.expectedEffort || ''} onChange={e => setForm(p => ({ ...p, expectedEffort: e.target.value }))} /></Field>
+      <Field label="Actual Effort (h)">  <Input type="number" value={form.actualEffort   || ''} onChange={e => setForm(p => ({ ...p, actualEffort:   e.target.value }))} /></Field>
+      <Field label="Tags"><Input value={form.tags || ''} onChange={e => setForm(p => ({ ...p, tags: e.target.value }))} /></Field>
+      <Field label="Comments" style={{ gridColumn: '1/-1' }}>
+        <Textarea value={form.comments || ''} onChange={e => setForm(p => ({ ...p, comments: e.target.value }))} />
+      </Field>
     </div>
   );
 
@@ -314,37 +400,46 @@ export default function Tasks() {
         }
       />
 
-      {/* Toolbar */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
-        <input placeholder="Search tasks…" value={filterText} onChange={e => setFilterText(e.target.value)}
-          style={{ border: '1px solid #c4c4c4', borderRadius: 4, padding: '5px 9px', fontSize: 12, width: 200, fontFamily: 'Roboto,sans-serif' }} />
-        <select value={filterPhase} onChange={e => setFilterPhase(e.target.value)}
-          style={{ border: '1px solid #c4c4c4', borderRadius: 4, padding: '5px 9px', fontSize: 12, fontFamily: 'Roboto,sans-serif' }}>
-          <option value="">All Phases</option>
-          {PHASES.map(p => <option key={p}>{p}</option>)}
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          style={{ border: '1px solid #c4c4c4', borderRadius: 4, padding: '5px 9px', fontSize: 12, fontFamily: 'Roboto,sans-serif' }}>
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <span style={{ fontSize: 12, color: '#888', marginLeft: 'auto' }}>{filtered.length} of {tasks.length} shown</span>
-        {canDrag && <span style={{ fontSize: 11, color: '#9799b1' }}>⠿ Drag rows to reorder</span>}
+      {/* Summary bar */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, color: '#888' }}>{filtered.length} of {tasks.length} shown</span>
+        {hasFilters && (
+          <button onClick={() => setColFilters({})}
+            style={{ fontSize: 11, color: '#404789', background: 'none', border: '1px solid #b0b4d4', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>
+            ✕ Clear all filters
+          </button>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: canDrag ? '#9799b1' : '#f57f17' }}>
+          {canDrag ? '⠿ Drag rows to reorder' : 'Clear filters to enable drag reorder'}
+        </span>
       </div>
-
-      {!canDrag && (
-        <div style={{ background: '#fff8e1', borderBottom: '1px solid #ffe082', padding: '5px 20px', fontSize: 11, color: '#f57f17', flexShrink: 0 }}>
-          Clear all filters to enable drag-and-drop reordering.
-        </div>
-      )}
 
       {/* Table */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5', borderBottom: '1px solid #d0d0d0', position: 'sticky', top: 0, zIndex: 2 }}>
-              {['','#','Task','Phase','Item','Status','Exp. Start','Exp. End','Act. Start','Act. End','Exp. Effort','Act. Effort',''].map((h,i) => (
-                <th key={i} style={{ padding: '8px 6px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#444', whiteSpace: 'nowrap', background: '#f5f5f5' }}>{h}</th>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed' }}>
+          <colgroup>
+            {COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
+          </colgroup>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 3 }}>
+            {/* Label row */}
+            <tr style={{ background: '#f0f1f8', borderBottom: '1px solid #d0d0d0' }}>
+              {COLS.map(c => (
+                <th key={c.key} style={{
+                  padding: '7px 6px', textAlign: 'left', fontSize: 11, fontWeight: 600,
+                  color: '#404789', whiteSpace: 'nowrap', background: '#f0f1f8',
+                  borderRight: '1px solid #e4e4ee',
+                }}>{c.label}</th>
+              ))}
+            </tr>
+            {/* Per-column filter row */}
+            <tr>
+              {COLS.map(c => (
+                <ColFilter
+                  key={c.key}
+                  col={c}
+                  value={colFilters[c.key] || ''}
+                  onChange={val => setFilter(c.key, val)}
+                />
               ))}
             </tr>
           </thead>
@@ -356,15 +451,17 @@ export default function Tasks() {
                 onEdit={openEdit}
                 onDragStart={canDrag ? handleDragStart : () => {}}
                 onDragOver={canDrag ? handleDragOver  : () => {}}
-                onDrop={canDrag ? handleDrop        : () => {}}
-                onDragEnd={canDrag ? handleDragEnd  : () => {}}
+                onDrop={canDrag ? handleDrop         : () => {}}
+                onDragEnd={canDrag ? handleDragEnd   : () => {}}
                 isDragging={dragOver === i}
               />
             ))}
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>No tasks match the current filters.</div>
+          <div style={{ textAlign: 'center', padding: 40, color: '#999', fontSize: 13 }}>
+            {hasFilters ? 'No tasks match the current filters.' : 'No tasks yet.'}
+          </div>
         )}
       </div>
 
@@ -382,10 +479,7 @@ export default function Tasks() {
           onSave={saveEdit}
           wide
         >
-          {isNew
-            ? formFields(newForm, setNewForm)
-            : formFields(editForm, setEditForm)
-          }
+          {isNew ? formFields(newForm, setNewForm) : formFields(editForm, setEditForm)}
         </Modal>
       )}
     </div>
