@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { DEFAULT_QUESTIONNAIRE, DEFAULT_ESTIMATOR, DEFAULT_TASKS_RAW } from './defaults';
+import { DEFAULT_QUESTIONNAIRE, DEFAULT_ESTIMATOR, DEFAULT_TASKS_RAW, DEFAULT_RAID_ROWS } from './defaults';
 
 // ── Helpers ──────────────────────────────────────────────────
 export function uid() { return 'p_' + Math.random().toString(36).slice(2, 10); }
@@ -69,10 +69,7 @@ export async function loadTemplates() {
       : { id: 'tpl-tasks', name: 'Tasks & Checklist', version: '1.0', updated: '2026-05-05', rows: DEFAULT_TASKS_RAW.map(r => ({ phase: r[0], item: r[1], task: r[2], taskType: r[3], tags: r[4], responsible: r[5], owner: r[6], reviewer: r[7] })) },
     raidlog: map['tpl-raidlog']
       ? { id: 'tpl-raidlog', name: map['tpl-raidlog'].name, version: map['tpl-raidlog'].version, updated: map['tpl-raidlog'].updated, rows: map['tpl-raidlog'].data.rows || [] }
-      : { id: 'tpl-raidlog', name: 'RAID Log', version: '1.0', updated: '2026-05-05', rows: [
-          { classification: 'Dependency', item: 'Sec Ref Integration', details: 'Format and mode of integration for Sec Master data needs to be confirmed', raisedOn: '2026-03-15', pendingWith: 'Client', updates: '4-Apr-26: Discussion with client IT started', status: 'In Progress', eta: '', comments: '' },
-          { classification: 'Risk', item: 'Pricing Rules', details: 'Pricing Hierarchy is still not confirmed.', raisedOn: '2026-03-20', pendingWith: 'Client', updates: '', status: 'In Progress', eta: '2026-04-15', comments: '' },
-        ] },
+      : { id: 'tpl-raidlog', name: 'RAID Log', version: '1.0', updated: '2026-05-05', rows: DEFAULT_RAID_ROWS },
   };
 }
 
@@ -120,8 +117,15 @@ export async function saveTasks(projectId, tasks) {
 
 export async function updateTask(projectId, task, sortOrder) {
   const row = { ...taskObjToRow(task, projectId), sort_order: sortOrder };
-  if (task.id && typeof task.id === 'number') {
-    await supabase.from('tasks').update(row).eq('id', task.id);
+  // task.id is a Supabase SERIAL integer for rows loaded from DB.
+  // If it exists, do a targeted UPDATE — never touch other rows.
+  if (task.id != null) {
+    const { error } = await supabase.from('tasks').update(row).eq('id', task.id);
+    if (error) throw error;
+  } else {
+    // Brand-new task with no DB id yet — insert it
+    const { error } = await supabase.from('tasks').insert(row);
+    if (error) throw error;
   }
 }
 
