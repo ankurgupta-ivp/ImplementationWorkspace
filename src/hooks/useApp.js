@@ -3,7 +3,7 @@ import {
   loadTemplates, loadProjects, loadTasks, loadRaidItems,
   saveProject, saveTasks, saveRaidItem, deleteRaidItem,
   saveTemplate, getAppState, setAppState,
-  createProjectFromTemplate, deleteProject,
+  createProjectFromTemplate, deleteProject, updateTask,
 } from '../lib/db';
 
 const AppContext = createContext(null);
@@ -109,11 +109,24 @@ export function AppProvider({ children }) {
   }, [activeProjectId]);
 
   const updateSingleTask = useCallback(async (taskId, changes) => {
-    const updated = tasks.map((t, i) => t.id === taskId ? { ...t, ...changes } : t);
-    setTasks(updated);
-    const idx = updated.findIndex(t => t.id === taskId);
-    if (idx >= 0) await saveTasks(activeProjectId, updated);
-  }, [tasks, activeProjectId]);
+    // IMPORTANT: use the functional form of setTasks so we always operate on
+    // the latest task list — never a stale closure snapshot.
+    // Then call updateTask() for a targeted single-row UPDATE in Supabase.
+    // We must NEVER call saveTasks() here: that does DELETE-all + re-insert
+    // and would wipe every task if the closure's `tasks` was stale.
+    setTasks(prev => {
+      const updated = prev.map(t => t.id === taskId ? { ...t, ...changes } : t);
+      const target  = updated.find(t => t.id === taskId);
+      if (target) {
+        const sortOrder = updated.indexOf(target);
+        // Fire-and-forget the DB write; errors surface in console
+        updateTask(activeProjectId, target, sortOrder).catch(err => {
+          console.error('updateSingleTask DB error:', err);
+        });
+      }
+      return updated;
+    });
+  }, [activeProjectId]);
 
   // ── RAID Items ────────────────────────────────────────────────
   const addRaidItem = useCallback(async (item) => {
