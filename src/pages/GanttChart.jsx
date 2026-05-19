@@ -223,23 +223,10 @@ export default function GanttChart() {
 
   const totalH = rows.length * ROW_H;
   const AXIS_H = 36;
-
-  if (!activeProject) return <EmptyState message="No project selected." />;
-
   const devCount = tasks.filter(t => t.taskType === 'Dev Task').length;
-  if (devCount === 0) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-        <GanttHeader activeProject={activeProject} devCount={0}
-          depthMode={depthMode} setDepthMode={setDepthMode}
-          timelineMode={timelineMode} setTimelineMode={setTimelineMode}
-          onExportXlsx={() => {}} onExportPptx={() => {}} showToast={showToast} />
-        <EmptyState message="No Dev Tasks found. Mark tasks as 'Dev Task' type in the Tasks & Checklist page." />
-      </div>
-    );
-  }
 
   // ── Export: Excel ─────────────────────────────────────────
+  // Hooks must all be declared before any early returns (React rules of hooks)
   const exportXlsx = useCallback(() => {
     const wb = XLSX.utils.book_new();
     const wsData = [
@@ -407,6 +394,21 @@ export default function GanttChart() {
       showToast('PPTX export failed', 'error');
     }
   }, [hierarchy, globalMin, globalMax, pxPerDay, chartW, ticks, showExp, showAct, showBoth, activeProject, showToast]);
+
+  // ── Early returns — must come AFTER all hooks ─────────────
+  if (!activeProject) return <EmptyState message="No project selected." />;
+
+  if (devCount === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        <GanttHeader activeProject={activeProject} devCount={0}
+          depthMode={depthMode} setDepthMode={setDepthMode}
+          timelineMode={timelineMode} setTimelineMode={setTimelineMode}
+          onExportXlsx={exportXlsx} onExportPptx={exportPptx} showToast={showToast} />
+        <EmptyState message="No Dev Tasks found. Mark tasks as 'Dev Task' type in the Tasks & Checklist page." />
+      </div>
+    );
+  }
 
   // ─────────────────────────────────────────────────────────
   //  Render
