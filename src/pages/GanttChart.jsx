@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useApp } from '../hooks/useApp';
 import { EmptyState } from '../components/UI';
 import * as XLSX from 'xlsx';
+import PptxGenJS from 'pptxgenjs';
 
 // ─────────────────────────────────────────────────────────────
 //  Constants & helpers
@@ -261,21 +262,7 @@ export default function GanttChart() {
   // ── Export: PowerPoint ────────────────────────────────────
   const exportPptx = useCallback(async () => {
     try {
-      // pptxgenjs loaded from CDN via script tag injected once
-      if (!window.PptxGenJS) {
-        showToast('Loading PPTX library…', 'success');
-        await new Promise((resolve, reject) => {
-          if (document.getElementById('pptxgenjs-cdn')) { resolve(); return; }
-          const s = document.createElement('script');
-          s.id  = 'pptxgenjs-cdn';
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js';
-          s.onload  = resolve;
-          s.onerror = reject;
-          document.head.appendChild(s);
-        });
-      }
-
-      const pptx = new window.PptxGenJS();
+      const pptx = new PptxGenJS();
       pptx.layout = 'LAYOUT_WIDE';   // 13.33" × 7.5"
       pptx.title  = `${activeProject.name} — Gantt Chart`;
 
@@ -335,8 +322,31 @@ export default function GanttChart() {
         slide.addText('Today', { x: tx - 0.18, y: AXIS_Y - 0.02, w: 0.36, h: 0.14, fontSize: 7, color: 'E53935', align: 'center', fontFace: 'Calibri' });
       }
 
-      // Rows
+      // Rows — auto-paginate when content exceeds slide height
+      const MAX_Y = SLIDE_H - 0.15;  // bottom margin
       let curY = START_Y;
+      let curSlide = slide;
+
+      // Helper: start a new slide with repeated header + axis
+      const addContinuationSlide = () => {
+        const s = pptx.addSlide();
+        s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: SLIDE_W, h: SLIDE_H, fill: { color: 'F8F9FE' }, line: { color: 'F8F9FE' } });
+        s.addText(`${activeProject.name} — Gantt Chart (cont.)`, {
+          x: 0.2, y: 0.08, w: SLIDE_W - 0.4, h: 0.25,
+          fontSize: 12, bold: true, color: '404789', fontFace: 'Calibri',
+        });
+        ticks.forEach(tk => {
+          const tx = BAR_X0 + tk.x / (chartW / BAR_AREA);
+          if (tx < BAR_X0 || tx > SLIDE_W - 0.2) return;
+          s.addText(tk.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }), {
+            x: tx - 0.2, y: 0.3, w: 0.4, h: 0.18,
+            fontSize: 7, color: '888888', align: 'center', fontFace: 'Calibri',
+          });
+          s.addShape(pptx.ShapeType.line, { x: tx, y: 0.48, w: 0, h: SLIDE_H - 0.48 - 0.1, line: { color: 'E0E0E0', width: 0.5 } });
+        });
+        return s;
+      };
+
       const rowsToRender = [];
       hierarchy.forEach(phase => {
         rowsToRender.push({ type: 'phase', data: phase });
@@ -351,14 +361,20 @@ export default function GanttChart() {
         const isPhase = type === 'phase';
         const isItem  = type === 'item';
 
+        // Start a new slide if this row would overflow
+        if (curY + ROW_H_IN > MAX_Y) {
+          curSlide = addContinuationSlide();
+          curY = 0.5;
+        }
+
         // Row background for phase
         if (isPhase) {
-          slide.addShape(pptx.ShapeType.rect, { x: 0.1, y: curY, w: SLIDE_W - 0.2, h: ROW_H_IN, fill: { color: 'E8EAF6' }, line: { color: 'D0D4F5' } });
+          curSlide.addShape(pptx.ShapeType.rect, { x: 0.1, y: curY, w: SLIDE_W - 0.2, h: ROW_H_IN, fill: { color: 'E8EAF6' }, line: { color: 'D0D4F5' } });
         }
 
         // Label
         const label = isPhase ? data.phase : isItem ? `  ${data.item}` : `    ${data.task}`;
-        slide.addText(label, {
+        curSlide.addText(label, {
           x: 0.12, y: curY + 0.04, w: LBL_W - 0.1, h: ROW_H_IN - 0.06,
           fontSize: isPhase ? 9 : isItem ? 8 : 7,
           bold: isPhase,
@@ -372,7 +388,7 @@ export default function GanttChart() {
           const bw = Math.max(0.05, xIn(data.expEnd) - bx + pxPD);
           const by = showBoth ? curY + 0.03 : curY + 0.06;
           const bh = showBoth ? ROW_H_IN * 0.42 : ROW_H_IN * 0.6;
-          slide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: bh, fill: { color: isPhase ? '2E3F8F' : '404789' }, line: { color: '404789' } });
+          curSlide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: bh, fill: { color: isPhase ? '2E3F8F' : '404789' }, line: { color: '404789' } });
         }
         // Actual bar
         if (showAct && data.actStart && data.actEnd) {
@@ -380,13 +396,13 @@ export default function GanttChart() {
           const bw = Math.max(0.05, xIn(data.actEnd) - bx + pxPD);
           const by = showBoth ? curY + ROW_H_IN * 0.5 : curY + 0.06;
           const bh = showBoth ? ROW_H_IN * 0.42 : ROW_H_IN * 0.6;
-          slide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: bh, fill: { color: isPhase ? 'B8770A' : 'DA9B38' }, line: { color: 'DA9B38' } });
+          curSlide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: bh, fill: { color: isPhase ? 'B8770A' : 'DA9B38' }, line: { color: 'DA9B38' } });
         }
 
         curY += ROW_H_IN;
       });
 
-      pptx.writeFile({ fileName: `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}_Gantt.pptx` });
+      await pptx.writeFile({ fileName: `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}_Gantt.pptx` });
       showToast('Gantt exported to PowerPoint');
     } catch (err) {
       console.error('PPTX export error:', err);
