@@ -9,7 +9,6 @@ import * as XLSX from 'xlsx';
 const EXP_COLOR   = '#404789';   // navy  – expected
 const ACT_COLOR   = '#da9b38';   // amber – actual
 const EXP_LIGHT   = '#d0d4f5';
-const ACT_LIGHT   = '#fbe8c0';
 const PHASE_BG    = '#f0f1f8';
 const PHASE_FG    = '#404789';
 const ITEM_BG     = '#fafafe';
@@ -110,7 +109,7 @@ function buildAxis(minD, maxD, chartW) {
 // ─────────────────────────────────────────────────────────────
 //  Bar component
 // ─────────────────────────────────────────────────────────────
-function Bar({ start, end, minD, pxPerDay, y, color, light, label, showBoth, isExp }) {
+function Bar({ start, end, minD, pxPerDay, y, color, showBoth, isExp }) {
   if (!start || !end) return null;
   const x = Math.max(0, diffDays(minD, start) * pxPerDay);
   const w = Math.max(4, diffDays(start, end) * pxPerDay + pxPerDay);
@@ -187,7 +186,7 @@ export default function GanttChart() {
     };
   }, [hierarchy]);
 
-  const { pxPerDay, ticks, totalDays } = useMemo(
+  const { pxPerDay, ticks } = useMemo(
     () => globalMin && globalMax ? buildAxis(globalMin, globalMax, chartW) : { pxPerDay: 0, ticks: [], totalDays: 0 },
     [globalMin, globalMax, chartW]
   );
@@ -393,7 +392,7 @@ export default function GanttChart() {
       console.error('PPTX export error:', err);
       showToast('PPTX export failed', 'error');
     }
-  }, [hierarchy, globalMin, globalMax, pxPerDay, chartW, ticks, showExp, showAct, showBoth, activeProject, showToast]);
+  }, [hierarchy, globalMin, globalMax, chartW, ticks, showExp, showAct, showBoth, activeProject, showToast]);
 
   // ── Early returns — must come AFTER all hooks ─────────────
   if (!activeProject) return <EmptyState message="No project selected." />;
@@ -443,8 +442,8 @@ export default function GanttChart() {
         </div>
       ) : (
         <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-          {/* Left label column */}
-          <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, background: '#fff', borderRight: '2px solid #e0e4f0', overflowY: 'hidden' }}>
+          {/* Left label column — sticky so it stays visible on horizontal scroll */}
+          <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, background: '#fff', borderRight: '2px solid #e0e4f0', position: 'sticky', left: 0, zIndex: 4 }}>
             {/* Axis placeholder */}
             <div style={{ height: AXIS_H, background: '#f0f1f8', borderBottom: '1px solid #d0d0d0', display: 'flex', alignItems: 'center', paddingLeft: 14 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Task / Item / Phase</span>
@@ -481,7 +480,7 @@ export default function GanttChart() {
           </div>
 
           {/* Right chart area */}
-          <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <svg
               width={chartW}
               height={AXIS_H + totalH + 1}
@@ -521,15 +520,15 @@ export default function GanttChart() {
                     {showExp && (
                       <Bar start={data.expStart} end={data.expEnd}
                         minD={globalMin} pxPerDay={pxPerDay}
-                        y={y} color={isPhase ? '#2e3f8f' : EXP_COLOR} light={EXP_LIGHT}
-                        showBoth={showBoth} isExp={true} label="exp" />
+                        y={y} color={isPhase ? '#2e3f8f' : EXP_COLOR}
+                        showBoth={showBoth} isExp={true} />
                     )}
                     {/* Actual bar */}
                     {showAct && (
                       <Bar start={data.actStart} end={data.actEnd}
                         minD={globalMin} pxPerDay={pxPerDay}
-                        y={y} color={isPhase ? '#b8770a' : ACT_COLOR} light={ACT_LIGHT}
-                        showBoth={showBoth} isExp={false} label="act" />
+                        y={y} color={isPhase ? '#b8770a' : ACT_COLOR}
+                        showBoth={showBoth} isExp={false} />
                     )}
                   </g>
                 );
