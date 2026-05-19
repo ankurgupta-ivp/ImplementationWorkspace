@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { page: 'kickoff',     icon: '⊕', label: 'Kickoff Questionnaire', section: null },
   { page: 'estimator',   icon: '⏱', label: 'Estimator',             section: null },
   { page: 'tasks',       icon: '☑', label: 'Tasks & Checklist',     section: null },
+  { page: 'gantt',       icon: '📊', label: 'Gantt Chart',            section: null },
   { page: 'raidlog',     icon: '⚑', label: 'RAID Log',              section: null },
   { page: 'templates',   icon: '📋', label: 'Template Library',     section: 'Library' },
   { page: 'docs',        icon: '📄', label: 'Documentation',        section: null },
