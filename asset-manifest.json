@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/ImplementationWorkspace/static/js/main.1bb21889.js",
-    "index.html": "/ImplementationWorkspace/index.html",
-    "main.1bb21889.js.map": "/ImplementationWorkspace/static/js/main.1bb21889.js.map"
+    "main.js": "/static/js/main.823600ed.js",
+    "index.html": "/index.html",
+    "main.823600ed.js.map": "/static/js/main.823600ed.js.map"
   },
   "entrypoints": [
-    "static/js/main.1bb21889.js"
+    "static/js/main.823600ed.js"
   ]
 }
