@@ -8,6 +8,7 @@ import Tasks from './pages/Tasks';
 import RaidLog from './pages/RaidLog';
 import Estimator from './pages/Estimator';
 import { Dashboard, Templates, Docs, DataSources } from './pages/OtherPages';
+import GanttChart from './pages/GanttChart';
 
 const PAGE_COMPONENTS = {
   overview: Overview,
@@ -19,6 +20,7 @@ const PAGE_COMPONENTS = {
   templates: Templates,
   docs: Docs,
   datasources: DataSources,
+  gantt: GanttChart,
 };
 
 function AppContent() {
