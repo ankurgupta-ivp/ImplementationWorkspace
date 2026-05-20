@@ -135,8 +135,25 @@ function ResizeHandle({ onResize }) {
     e.stopPropagation();
     dragging.current = true;
     startX.current   = e.clientX;
-    const onMove = (mv) => { if (dragging.current) onResize(mv.clientX - startX.current); startX.current = mv.clientX; };
-    const onUp   = () => { dragging.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    let moved = false;
+    const onMove = (mv) => {
+      if (!dragging.current) return;
+      moved = true;
+      onResize(mv.clientX - startX.current);
+      startX.current = mv.clientX;
+    };
+    const onUp = () => {
+      dragging.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      // If the mouse actually moved, swallow the synthetic click that the
+      // browser fires after mouseup — otherwise it bubbles to the <th>
+      // and triggers the sort handler.
+      if (moved) {
+        const absorb = (ce) => { ce.stopPropagation(); ce.preventDefault(); };
+        window.addEventListener('click', absorb, { capture: true, once: true });
+      }
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup',   onUp);
   };
