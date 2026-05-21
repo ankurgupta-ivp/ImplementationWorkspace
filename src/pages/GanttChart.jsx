@@ -578,7 +578,6 @@ export default function GanttChart() {
           No date information found on Dev Tasks. Add Expected Start/End dates in the Tasks &amp; Checklist page.
         </div>
       ) : (
-        {/* Wrapper: horizontal scroll + vertical scroll together */}
         <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
           <div style={{ display: 'flex', minWidth: LABEL_W + MIN_CHART_W }}>
 
