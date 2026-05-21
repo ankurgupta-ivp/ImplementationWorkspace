@@ -3,6 +3,7 @@ import { useApp } from '../hooks/useApp';
 import { EmptyState } from '../components/UI';
 import * as XLSX from 'xlsx';
 import PptxGenJS from 'pptxgenjs';
+import { getAppState, setAppState } from '../lib/db';
 
 // ─────────────────────────────────────────────────────────────
 //  Constants & helpers
@@ -14,7 +15,9 @@ const PHASE_BG    = '#f0f1f8';
 const PHASE_FG    = '#404789';
 const ITEM_BG     = '#fafafe';
 const ROW_H       = 28;          // px per row
-const LABEL_W     = 300;         // px for left label column
+const NAME_W      = 220;         // px for phase/item/task name sub-column
+const CMT_W       = 180;         // px for comments sub-column
+const LABEL_W     = NAME_W + CMT_W; // total left panel width
 const MIN_CHART_W = 600;
 
 function parseDate(s) {
@@ -146,10 +149,19 @@ function TodayLine({ minD, pxPerDay, totalH }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Pure helpers
+// ─────────────────────────────────────────────────────────────
+function rowKey(row) {
+  if (row.type === 'phase') return `phase::${row.data.phase}`;
+  if (row.type === 'item')  return `item::${row.phase}::${row.data.item}`;
+  return `task::${row.data.id}`;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Main component
 // ─────────────────────────────────────────────────────────────
 export default function GanttChart() {
-  const { activeProject, tasks, showToast } = useApp();
+  const { activeProject, activeProjectId, tasks, showToast } = useApp();
 
   // Toggles
   const [depthMode,    setDepthMode]    = useState('items');   // 'items' | 'tasks' | 'both'
@@ -157,6 +169,16 @@ export default function GanttChart() {
 
   const chartRef = useRef(null);
   const [chartW,  setChartW] = useState(900);
+
+  // Gantt-level comments: stored per-project in app_state.
+  // key = 'phase::item::task' (empty strings for phase/item rows)
+  // e.g. phase row  → 'Project Creation:::::'
+  //      item row   → 'Project Creation::BRD::'
+  //      task row   → uses task.id as key for uniqueness
+  const [ganttComments, setGanttComments] = useState({});
+  const [editingComment, setEditingComment] = useState(null); // rowKey
+  const [commentDraft,   setCommentDraft]   = useState('');
+  const ganttCmtKey = activeProjectId ? `gantt_comments_${activeProjectId}` : null;
 
   useEffect(() => {
     const obs = new ResizeObserver(entries => {
@@ -166,6 +188,16 @@ export default function GanttChart() {
     if (chartRef.current) obs.observe(chartRef.current);
     return () => obs.disconnect();
   }, []);
+
+  // Load persisted gantt comments for this project
+  useEffect(() => {
+    if (!ganttCmtKey) return;
+    getAppState(ganttCmtKey).then(result => {
+      if (result?.value) {
+        try { setGanttComments(JSON.parse(result.value)); } catch {}
+      }
+    });
+  }, [ganttCmtKey]);
 
   const hierarchy = useMemo(() => buildHierarchy(tasks), [tasks]);
 
@@ -225,39 +257,52 @@ export default function GanttChart() {
   const AXIS_H = 36;
   const devCount = tasks.filter(t => t.taskType === 'Dev Task').length;
 
+  // Comment key helpers — stable reference, no deps needed
+
+  const saveComment = (key, value) => {
+    setGanttComments(prev => {
+      const next = { ...prev, [key]: value };
+      if (ganttCmtKey) setAppState(ganttCmtKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
   // ── Export: Excel ─────────────────────────────────────────
   // Hooks must all be declared before any early returns (React rules of hooks)
   const exportXlsx = useCallback(() => {
     const wb = XLSX.utils.book_new();
-    const wsData = [
-      ['Phase', 'Item', 'Task', 'Exp. Start', 'Exp. End', 'Act. Start', 'Act. End', 'Owner Status'],
-    ];
-    hierarchy.forEach(phase => {
-      wsData.push([phase.phase, '', '', fmtDate(phase.expStart), fmtDate(phase.expEnd), fmtDate(phase.actStart), fmtDate(phase.actEnd), '']);
-      phase.items.forEach(item => {
-        wsData.push(['', item.item, '', fmtDate(item.expStart), fmtDate(item.expEnd), fmtDate(item.actStart), fmtDate(item.actEnd), '']);
-        item.tasks.forEach(t => {
-          wsData.push(['', '', t.task, t.expectedStart || '', t.expectedEnd || '', t.actualStart || '', t.actualEnd || '', t.ownerStatus]);
-        });
-      });
+    // Build headers based on active timeline toggles
+    const hdrs = ['Level', 'Name'];
+    if (showExp) { hdrs.push('Exp. Start'); hdrs.push('Exp. End'); }
+    if (showAct) { hdrs.push('Act. Start'); hdrs.push('Act. End'); }
+    hdrs.push('Comments');
+    const wsData = [hdrs];
+
+    // Export exactly the rows currently visible in the UI (respects depthMode)
+    rows.forEach(row => {
+      const { type, data } = row;
+      const cmt = ganttComments[rowKey(row)] || '';
+      const rowArr = [
+        type.charAt(0).toUpperCase() + type.slice(1),
+        type === 'phase' ? data.phase : type === 'item' ? data.item : data.task,
+      ];
+      if (showExp) { rowArr.push(fmtDate(data.expStart)); rowArr.push(fmtDate(data.expEnd)); }
+      if (showAct) { rowArr.push(fmtDate(data.actStart)); rowArr.push(fmtDate(data.actEnd)); }
+      rowArr.push(cmt);
+      wsData.push(rowArr);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [26, 26, 50, 12, 12, 12, 12, 14].map(wch => ({ wch }));
-
-    // Style header row bold
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
-      if (ws[cellRef]) {
-        ws[cellRef].s = { font: { bold: true }, fill: { patternType: 'solid', fgColor: { rgb: 'E8EAF6' } } };
-      }
-    }
+    const colWidths = [8, 50];
+    if (showExp) { colWidths.push(12); colWidths.push(12); }
+    if (showAct) { colWidths.push(12); colWidths.push(12); }
+    colWidths.push(36);
+    ws['!cols'] = colWidths.map(wch => ({ wch }));
 
     XLSX.utils.book_append_sheet(wb, ws, 'Gantt');
     XLSX.writeFile(wb, `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}_Gantt.xlsx`);
     showToast('Gantt exported to Excel');
-  }, [hierarchy, activeProject, showToast]);
+  }, [rows, ganttComments, showExp, showAct, activeProject, showToast]);
 
   // ── Export: PowerPoint ────────────────────────────────────
   const exportPptx = useCallback(async () => {
@@ -266,11 +311,13 @@ export default function GanttChart() {
       pptx.layout = 'LAYOUT_WIDE';   // 13.33" × 7.5"
       pptx.title  = `${activeProject.name} — Gantt Chart`;
 
-      const SLIDE_W  = 13.33;  // inches
-      const SLIDE_H  = 7.5;
-      const LBL_W    = 3.2;    // inches for label column
-      const BAR_X0   = LBL_W + 0.15;
-      const BAR_AREA = SLIDE_W - BAR_X0 - 0.2;
+      const SLIDE_W    = 13.33;  // inches
+      const SLIDE_H    = 7.5;
+      const NAME_W_IN  = 2.2;   // phase/item/task name column
+      const CMT_W_IN   = 1.5;   // comments column
+      const LBL_W      = NAME_W_IN + CMT_W_IN;
+      const BAR_X0     = LBL_W + 0.12;
+      const BAR_AREA   = SLIDE_W - BAR_X0 - 0.15;
       const AXIS_Y   = 0.85;
       const ROW_H_IN = 0.28;
       const START_Y  = AXIS_Y + 0.32;
@@ -347,16 +394,8 @@ export default function GanttChart() {
         return s;
       };
 
-      const rowsToRender = [];
-      hierarchy.forEach(phase => {
-        rowsToRender.push({ type: 'phase', data: phase });
-        phase.items.forEach(item => {
-          rowsToRender.push({ type: 'item', data: item });
-          item.tasks.forEach(t => rowsToRender.push({ type: 'task', data: t }));
-        });
-      });
-
-      rowsToRender.forEach(row => {
+      // Use the same rows array the UI is showing (respects depthMode toggle)
+      rows.forEach(row => {
         const { type, data } = row;
         const isPhase = type === 'phase';
         const isItem  = type === 'item';
@@ -372,14 +411,29 @@ export default function GanttChart() {
           curSlide.addShape(pptx.ShapeType.rect, { x: 0.1, y: curY, w: SLIDE_W - 0.2, h: ROW_H_IN, fill: { color: 'E8EAF6' }, line: { color: 'D0D4F5' } });
         }
 
-        // Label
-        const label = isPhase ? data.phase : isItem ? `  ${data.item}` : `    ${data.task}`;
+        // Name label
+        const label = isPhase ? data.phase : isItem ? data.item : data.task;
+        const indent = isPhase ? 0.12 : isItem ? 0.22 : 0.32;
         curSlide.addText(label, {
-          x: 0.12, y: curY + 0.04, w: LBL_W - 0.1, h: ROW_H_IN - 0.06,
+          x: indent, y: curY + 0.04, w: NAME_W_IN - indent - 0.05, h: ROW_H_IN - 0.06,
           fontSize: isPhase ? 9 : isItem ? 8 : 7,
           bold: isPhase,
           color: isPhase ? '404789' : '404041',
           fontFace: 'Calibri',
+        });
+
+        // Comments column
+        const cmt = ganttComments[rowKey(row)] || '';
+        if (cmt) {
+          curSlide.addText(cmt, {
+            x: NAME_W_IN + 0.04, y: curY + 0.04, w: CMT_W_IN - 0.08, h: ROW_H_IN - 0.06,
+            fontSize: 6, color: '666666', fontFace: 'Calibri', wrap: true,
+          });
+        }
+        // Vertical divider between name and comments columns
+        curSlide.addShape(pptx.ShapeType.line, {
+          x: NAME_W_IN + 0.02, y: curY, w: 0, h: ROW_H_IN,
+          line: { color: 'E0E0E0', width: 0.5 },
         });
 
         // Expected bar
@@ -408,7 +462,7 @@ export default function GanttChart() {
       console.error('PPTX export error:', err);
       showToast('PPTX export failed', 'error');
     }
-  }, [hierarchy, globalMin, globalMax, chartW, ticks, showExp, showAct, showBoth, activeProject, showToast]);
+  }, [rows, ganttComments, globalMin, globalMax, chartW, ticks, showExp, showAct, showBoth, activeProject, showToast]);
 
   // ── Early returns — must come AFTER all hooks ─────────────
   if (!activeProject) return <EmptyState message="No project selected." />;
@@ -458,38 +512,81 @@ export default function GanttChart() {
         </div>
       ) : (
         <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-          {/* Left label column — sticky so it stays visible on horizontal scroll */}
-          <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, background: '#fff', borderRight: '2px solid #e0e4f0', position: 'sticky', left: 0, zIndex: 4 }}>
-            {/* Axis placeholder */}
-            <div style={{ height: AXIS_H, background: '#f0f1f8', borderBottom: '1px solid #d0d0d0', display: 'flex', alignItems: 'center', paddingLeft: 14 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Task / Item / Phase</span>
+          {/* Left panel — sticky, split into Name + Comments sub-columns */}
+          <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, background: '#fff', borderRight: '2px solid #e0e4f0', position: 'sticky', left: 0, zIndex: 4, display: 'flex', flexDirection: 'column' }}>
+            {/* Header row */}
+            <div style={{ height: AXIS_H, background: '#f0f1f8', borderBottom: '1px solid #d0d0d0', display: 'flex', flexShrink: 0 }}>
+              <div style={{ width: NAME_W, minWidth: NAME_W, display: 'flex', alignItems: 'center', paddingLeft: 14, borderRight: '1px solid #e0e0e8' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Phase / Item / Task</span>
+              </div>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Comments</span>
+              </div>
             </div>
+            {/* Data rows */}
             {rows.map((row, i) => {
               const { type, data } = row;
               const isPhase = type === 'phase';
               const isItem  = type === 'item';
               const isTask  = type === 'task';
               const label   = isPhase ? data.phase : isItem ? data.item : data.task;
+              const rk      = rowKey(row);
+              const cmt     = ganttComments[rk] || '';
+              const isEditingCmt = editingComment === rk;
               return (
                 <div key={i} style={{
-                  height: ROW_H,
+                  height: ROW_H, display: 'flex', flexShrink: 0,
                   background: isPhase ? PHASE_BG : isItem ? ITEM_BG : '#fff',
                   borderBottom: '1px solid #f0f0f0',
-                  display: 'flex', alignItems: 'center',
-                  paddingLeft: isPhase ? 10 : isItem ? 22 : 36,
-                  paddingRight: 8,
-                  fontWeight: isPhase ? 600 : 400,
-                  fontSize: isPhase ? 12 : isItem ? 11 : 10,
-                  color: isPhase ? PHASE_FG : '#404041',
-                  borderLeft: isPhase ? `3px solid ${PHASE_FG}` : isItem ? `3px solid ${EXP_LIGHT}` : '3px solid transparent',
-                  overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                  gap: 6,
                 }}>
-                  {isPhase && <span style={{ fontSize: 10 }}>▶</span>}
-                  {isItem  && <span style={{ fontSize: 9, color: '#aaa' }}>├</span>}
-                  {isTask  && <span style={{ fontSize: 9, color: '#ccc' }}>└</span>}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={label}>{label}</span>
+                  {/* Name sub-column */}
+                  <div style={{
+                    width: NAME_W, minWidth: NAME_W,
+                    display: 'flex', alignItems: 'center',
+                    paddingLeft: isPhase ? 10 : isItem ? 22 : 36,
+                    paddingRight: 6,
+                    fontWeight: isPhase ? 600 : 400,
+                    fontSize: isPhase ? 12 : isItem ? 11 : 10,
+                    color: isPhase ? PHASE_FG : '#404041',
+                    borderLeft: isPhase ? `3px solid ${PHASE_FG}` : isItem ? `3px solid ${EXP_LIGHT}` : '3px solid transparent',
+                    borderRight: '1px solid #e8e8f0',
+                    overflow: 'hidden', gap: 5,
+                  }}>
+                    {isPhase && <span style={{ fontSize: 10, flexShrink: 0 }}>▶</span>}
+                    {isItem  && <span style={{ fontSize: 9, color: '#aaa', flexShrink: 0 }}>├</span>}
+                    {isTask  && <span style={{ fontSize: 9, color: '#ccc', flexShrink: 0 }}>└</span>}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>{label}</span>
+                  </div>
+                  {/* Comments sub-column */}
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '2px 6px', overflow: 'hidden' }}
+                    onClick={() => { setEditingComment(rk); setCommentDraft(cmt); }}>
+                    {isEditingCmt ? (
+                      <textarea
+                        autoFocus
+                        value={commentDraft}
+                        onChange={e => setCommentDraft(e.target.value)}
+                        onBlur={() => { saveComment(rk, commentDraft); setEditingComment(null); }}
+                        onKeyDown={e => {
+                          if (e.key === 'Escape') { setEditingComment(null); }
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveComment(rk, commentDraft); setEditingComment(null); }
+                        }}
+                        style={{
+                          width: '100%', height: ROW_H - 4, resize: 'none',
+                          fontSize: 10, border: '2px solid #404789', borderRadius: 3,
+                          padding: '2px 4px', fontFamily: 'Roboto,sans-serif',
+                          background: '#fffff8', outline: 'none', boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      <span style={{
+                        fontSize: 10, color: cmt ? '#555' : '#ccc',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        width: '100%', cursor: 'text',
+                      }} title={cmt || 'Click to add comment'}>
+                        {cmt || <span style={{ fontStyle: 'italic', color: '#ccc' }}>add note…</span>}
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
