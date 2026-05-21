@@ -14,11 +14,15 @@ const EXP_LIGHT   = '#d0d4f5';
 const PHASE_BG    = '#f0f1f8';
 const PHASE_FG    = '#404789';
 const ITEM_BG     = '#fafafe';
-const ROW_H       = 28;          // px per row
-const NAME_W      = 220;         // px for phase/item/task name sub-column
-const CMT_W       = 180;         // px for comments sub-column
-const LABEL_W     = NAME_W + CMT_W; // total left panel width
+const ROW_H_BASE  = 28;          // minimum px per row (grows with comment)
+const NAME_W      = 200;         // px for phase/item/task name sub-column
+const CMT_W       = 170;         // px for comments sub-column
+const STATUS_W    = 90;          // px for derived status sub-column
+const LABEL_W     = NAME_W + CMT_W + STATUS_W; // total left panel width
 const MIN_CHART_W = 600;
+const AXIS_H      = 36;          // px for the frozen timeline header row
+const LINE_H      = 14;          // px per comment line for height calc
+const CMT_PAD     = 8;           // top+bottom padding px
 
 function parseDate(s) {
   if (!s) return null;
@@ -33,6 +37,26 @@ function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); retu
 function diffDays(a, b) { return Math.round((b - a) / 86400000); }
 function minDate(...dates) { const v = dates.filter(Boolean); return v.length ? new Date(Math.min(...v)) : null; }
 function maxDate(...dates) { const v = dates.filter(Boolean); return v.length ? new Date(Math.max(...v)) : null; }
+
+// ─────────────────────────────────────────────────────────────
+//  Status derivation
+//  Priority: Blocked > Delayed > In Progress > Done > Not Started
+// ─────────────────────────────────────────────────────────────
+const STATUS_PRIORITY = ['Blocked','Delayed','In Progress','Done','Not Started'];
+function deriveStatus(statuses) {
+  if (!statuses || statuses.length === 0) return 'Not Started';
+  for (const s of STATUS_PRIORITY) {
+    if (statuses.includes(s)) return s;
+  }
+  return statuses[0] || 'Not Started';
+}
+const STATUS_COLORS = {
+  'Done':        { bg: '#e8f5e9', fg: '#2e7d32' },
+  'In Progress': { bg: '#fff8e1', fg: '#f57f17' },
+  'Blocked':     { bg: '#fce4ec', fg: '#c62828' },
+  'Delayed':     { bg: '#fff3e0', fg: '#e65100' },
+  'Not Started': { bg: '#f5f5f5', fg: '#9e9e9e' },
+};
 
 // ─────────────────────────────────────────────────────────────
 //  Data builder
@@ -67,11 +91,13 @@ function buildHierarchy(tasks) {
       const expEnd   = maxDate(...tlist.map(t => parseDate(t.expectedEnd)));
       const actStart = minDate(...tlist.map(t => parseDate(t.actualStart)));
       const actEnd   = maxDate(...tlist.map(t => parseDate(t.actualEnd)));
-      return { item, expStart, expEnd, actStart, actEnd, tasks: tlist };
+      const itemStatus = deriveStatus(tlist.map(t => t.ownerStatus));
+      return { item, expStart, expEnd, actStart, actEnd, tasks: tlist, status: itemStatus };
     });
 
     const allExp = items.flatMap(i => [i.expStart, i.expEnd]).filter(Boolean);
     const allAct = items.flatMap(i => [i.actStart, i.actEnd]).filter(Boolean);
+    const phaseStatus = deriveStatus(items.map(i => i.status));
     return {
       phase,
       expStart: minDate(...allExp),
@@ -79,6 +105,7 @@ function buildHierarchy(tasks) {
       actStart: minDate(...allAct),
       actEnd:   maxDate(...allAct),
       items,
+      status: phaseStatus,
     };
   });
 }
@@ -113,12 +140,13 @@ function buildAxis(minD, maxD, chartW) {
 // ─────────────────────────────────────────────────────────────
 //  Bar component
 // ─────────────────────────────────────────────────────────────
-function Bar({ start, end, minD, pxPerDay, y, color, showBoth, isExp }) {
+function Bar({ start, end, minD, pxPerDay, y, rowH, color, showBoth, isExp }) {
   if (!start || !end) return null;
   const x = Math.max(0, diffDays(minD, start) * pxPerDay);
   const w = Math.max(4, diffDays(start, end) * pxPerDay + pxPerDay);
-  const barY = showBoth ? (isExp ? y + 4 : y + 14) : y + 6;
-  const barH = showBoth ? 10 : 16;
+  const mid = y + rowH / 2;
+  const barH = showBoth ? Math.max(8, rowH * 0.35) : Math.max(10, rowH * 0.55);
+  const barY = showBoth ? (isExp ? mid - barH - 1 : mid + 1) : mid - barH / 2;
 
   return (
     <g>
@@ -193,8 +221,8 @@ export default function GanttChart() {
   useEffect(() => {
     if (!ganttCmtKey) return;
     getAppState(ganttCmtKey).then(result => {
-      if (result?.value) {
-        try { setGanttComments(JSON.parse(result.value)); } catch {}
+      if (result) {
+        try { setGanttComments(JSON.parse(result)); } catch {}
       }
     });
   }, [ganttCmtKey]);
@@ -253,19 +281,36 @@ export default function GanttChart() {
     return out;
   }, [hierarchy, depthMode]);
 
-  const totalH = rows.length * ROW_H;
-  const AXIS_H = 36;
+  // Per-row heights: grow to fit comment text
+  const rowHeights = useMemo(() => rows.map(row => {
+    const cmt = ganttComments[rowKey(row)] || '';
+    if (!cmt) return ROW_H_BASE;
+    const charsPerLine = Math.floor((CMT_W - 12) / 6.5); // approx chars at font-size 10
+    const lines = cmt.split('\n').reduce((sum, ln) => sum + Math.max(1, Math.ceil(ln.length / charsPerLine)), 0);
+    return Math.max(ROW_H_BASE, lines * LINE_H + CMT_PAD);
+  }), [rows, ganttComments]);
+
+  const totalH  = rowHeights.reduce((s, h) => s + h, 0);
+  // rowY[i] = cumulative y offset for row i in the chart SVG
+  const rowYs   = useMemo(() => {
+    const ys = [];
+    let acc = 0;
+    rowHeights.forEach(h => { ys.push(acc); acc += h; });
+    return ys;
+  }, [rowHeights]);
+
   const devCount = tasks.filter(t => t.taskType === 'Dev Task').length;
 
   // Comment key helpers — stable reference, no deps needed
 
-  const saveComment = (key, value) => {
+  const saveComment = useCallback((key, value) => {
     setGanttComments(prev => {
       const next = { ...prev, [key]: value };
-      if (ganttCmtKey) setAppState(ganttCmtKey, JSON.stringify(next));
       return next;
     });
-  };
+    // Persist outside the updater so ganttCmtKey is always fresh
+    if (ganttCmtKey) setAppState(ganttCmtKey, JSON.stringify({ ...ganttComments, [key]: value }));
+  }, [ganttCmtKey, ganttComments]);
 
   // ── Export: Excel ─────────────────────────────────────────
   // Hooks must all be declared before any early returns (React rules of hooks)
@@ -313,9 +358,10 @@ export default function GanttChart() {
 
       const SLIDE_W    = 13.33;  // inches
       const SLIDE_H    = 7.5;
-      const NAME_W_IN  = 2.2;   // phase/item/task name column
-      const CMT_W_IN   = 1.5;   // comments column
-      const LBL_W      = NAME_W_IN + CMT_W_IN;
+      const NAME_W_IN  = 2.0;   // phase/item/task name column
+      const STS_W_IN   = 0.85;  // status column
+      const CMT_W_IN   = 1.3;   // comments column
+      const LBL_W      = NAME_W_IN + STS_W_IN + CMT_W_IN;
       const BAR_X0     = LBL_W + 0.12;
       const BAR_AREA   = SLIDE_W - BAR_X0 - 0.15;
       const AXIS_Y   = 0.85;
@@ -401,7 +447,7 @@ export default function GanttChart() {
         const isItem  = type === 'item';
 
         // Start a new slide if this row would overflow
-        if (curY + ROW_H_IN > MAX_Y) {
+        if (curY + thisRowH > MAX_Y) {
           curSlide = addContinuationSlide();
           curY = 0.5;
         }
@@ -411,49 +457,70 @@ export default function GanttChart() {
           curSlide.addShape(pptx.ShapeType.rect, { x: 0.1, y: curY, w: SLIDE_W - 0.2, h: ROW_H_IN, fill: { color: 'E8EAF6' }, line: { color: 'D0D4F5' } });
         }
 
+        // Variable row height: taller if comment wraps
+        const cmt        = ganttComments[rowKey(row)] || '';
+        const cmtLines   = cmt ? Math.max(1, cmt.split('\n').reduce((s,ln) => s + Math.max(1, Math.ceil(ln.length / 30)), 0)) : 0;
+        const thisRowH   = Math.max(ROW_H_IN, cmtLines > 1 ? cmtLines * 0.14 + 0.04 : ROW_H_IN);
+
+        // Row background for phase
+        if (isPhase) {
+          curSlide.addShape(pptx.ShapeType.rect, { x: 0.1, y: curY, w: SLIDE_W - 0.2, h: thisRowH, fill: { color: 'E8EAF6' }, line: { color: 'D0D4F5' } });
+        }
+
         // Name label
-        const label = isPhase ? data.phase : isItem ? data.item : data.task;
+        const label  = isPhase ? data.phase : isItem ? data.item : data.task;
         const indent = isPhase ? 0.12 : isItem ? 0.22 : 0.32;
         curSlide.addText(label, {
-          x: indent, y: curY + 0.04, w: NAME_W_IN - indent - 0.05, h: ROW_H_IN - 0.06,
-          fontSize: isPhase ? 9 : isItem ? 8 : 7,
-          bold: isPhase,
-          color: isPhase ? '404789' : '404041',
-          fontFace: 'Calibri',
+          x: indent, y: curY + 0.03, w: NAME_W_IN - indent - 0.05, h: thisRowH - 0.04,
+          fontSize: isPhase ? 9 : isItem ? 8 : 7, bold: isPhase,
+          color: isPhase ? '404789' : '404041', fontFace: 'Calibri', wrap: true, valign: 'top',
+        });
+
+        // Status column
+        const rowStatus = data.status || (type === 'task' ? (data.ownerStatus || 'Not Started') : 'Not Started');
+        const stCol = STATUS_COLORS[rowStatus] || STATUS_COLORS['Not Started'];
+        curSlide.addText(rowStatus, {
+          x: NAME_W_IN + 0.03, y: curY + 0.04, w: STS_W_IN - 0.06, h: thisRowH - 0.06,
+          fontSize: 6.5, bold: false, color: stCol.fg.replace('#',''),
+          fontFace: 'Calibri', align: 'center', valign: 'top',
+        });
+        // Status column vertical divider
+        curSlide.addShape(pptx.ShapeType.line, {
+          x: NAME_W_IN + 0.02, y: curY, w: 0, h: thisRowH, line: { color: 'E0E0E0', width: 0.5 },
         });
 
         // Comments column
-        const cmt = ganttComments[rowKey(row)] || '';
         if (cmt) {
           curSlide.addText(cmt, {
-            x: NAME_W_IN + 0.04, y: curY + 0.04, w: CMT_W_IN - 0.08, h: ROW_H_IN - 0.06,
-            fontSize: 6, color: '666666', fontFace: 'Calibri', wrap: true,
+            x: NAME_W_IN + STS_W_IN + 0.03, y: curY + 0.03, w: CMT_W_IN - 0.06, h: thisRowH - 0.04,
+            fontSize: 6, color: '666666', fontFace: 'Calibri', wrap: true, valign: 'top',
           });
         }
-        // Vertical divider between name and comments columns
+        // Comment column vertical divider
         curSlide.addShape(pptx.ShapeType.line, {
-          x: NAME_W_IN + 0.02, y: curY, w: 0, h: ROW_H_IN,
-          line: { color: 'E0E0E0', width: 0.5 },
+          x: NAME_W_IN + STS_W_IN + 0.02, y: curY, w: 0, h: thisRowH, line: { color: 'E0E0E0', width: 0.5 },
         });
 
         // Expected bar
         if (showExp && data.expStart && data.expEnd) {
           const bx = xIn(data.expStart);
           const bw = Math.max(0.05, xIn(data.expEnd) - bx + pxPD);
-          const by = showBoth ? curY + 0.03 : curY + 0.06;
-          const bh = showBoth ? ROW_H_IN * 0.42 : ROW_H_IN * 0.6;
-          curSlide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: bh, fill: { color: isPhase ? '2E3F8F' : '404789' }, line: { color: '404789' } });
+          const barH = showBoth ? thisRowH * 0.4 : thisRowH * 0.55;
+          const mid  = curY + thisRowH / 2;
+          const by   = showBoth ? mid - barH - 0.01 : mid - barH / 2;
+          curSlide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: barH, fill: { color: isPhase ? '2E3F8F' : '404789' }, line: { color: '404789' } });
         }
         // Actual bar
         if (showAct && data.actStart && data.actEnd) {
           const bx = xIn(data.actStart);
           const bw = Math.max(0.05, xIn(data.actEnd) - bx + pxPD);
-          const by = showBoth ? curY + ROW_H_IN * 0.5 : curY + 0.06;
-          const bh = showBoth ? ROW_H_IN * 0.42 : ROW_H_IN * 0.6;
-          curSlide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: bh, fill: { color: isPhase ? 'B8770A' : 'DA9B38' }, line: { color: 'DA9B38' } });
+          const barH = showBoth ? thisRowH * 0.4 : thisRowH * 0.55;
+          const mid  = curY + thisRowH / 2;
+          const by   = showBoth ? mid + 0.01 : mid - barH / 2;
+          curSlide.addShape(pptx.ShapeType.rect, { x: bx, y: by, w: bw, h: barH, fill: { color: isPhase ? 'B8770A' : 'DA9B38' }, line: { color: 'DA9B38' } });
         }
 
-        curY += ROW_H_IN;
+        curY += thisRowH;
       });
 
       await pptx.writeFile({ fileName: `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}_Gantt.pptx` });
@@ -511,19 +578,25 @@ export default function GanttChart() {
           No date information found on Dev Tasks. Add Expected Start/End dates in the Tasks &amp; Checklist page.
         </div>
       ) : (
-        <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
-          {/* Left panel — sticky, split into Name + Comments sub-columns */}
-          <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, background: '#fff', borderRight: '2px solid #e0e4f0', position: 'sticky', left: 0, zIndex: 4, display: 'flex', flexDirection: 'column' }}>
-            {/* Header row */}
-            <div style={{ height: AXIS_H, background: '#f0f1f8', borderBottom: '1px solid #d0d0d0', display: 'flex', flexShrink: 0 }}>
+        {/* Wrapper: horizontal scroll + vertical scroll together */}
+        <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+          <div style={{ display: 'flex', minWidth: LABEL_W + MIN_CHART_W }}>
+
+          {/* Left panel — sticky left, contains frozen header + data rows */}
+          <div style={{ width: LABEL_W, minWidth: LABEL_W, flexShrink: 0, background: '#fff', borderRight: '2px solid #e0e4f0', position: 'sticky', left: 0, zIndex: 5, display: 'flex', flexDirection: 'column' }}>
+            {/* FROZEN header row */}
+            <div style={{ height: AXIS_H, background: '#f0f1f8', borderBottom: '2px solid #d0d0d0', display: 'flex', flexShrink: 0, position: 'sticky', top: 0, zIndex: 6 }}>
               <div style={{ width: NAME_W, minWidth: NAME_W, display: 'flex', alignItems: 'center', paddingLeft: 14, borderRight: '1px solid #e0e0e8' }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Phase / Item / Task</span>
+              </div>
+              <div style={{ width: STATUS_W, minWidth: STATUS_W, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #e0e0e8' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Status</span>
               </div>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#404789' }}>Comments</span>
               </div>
             </div>
-            {/* Data rows */}
+            {/* Data rows — variable height based on comment length */}
             {rows.map((row, i) => {
               const { type, data } = row;
               const isPhase = type === 'phase';
@@ -533,16 +606,20 @@ export default function GanttChart() {
               const rk      = rowKey(row);
               const cmt     = ganttComments[rk] || '';
               const isEditingCmt = editingComment === rk;
+              const rh      = rowHeights[i];
+              // Status for this row
+              const status  = data.status || (isTask ? (data.ownerStatus || 'Not Started') : 'Not Started');
+              const stColor = STATUS_COLORS[status] || STATUS_COLORS['Not Started'];
               return (
                 <div key={i} style={{
-                  height: ROW_H, display: 'flex', flexShrink: 0,
+                  height: rh, display: 'flex', flexShrink: 0,
                   background: isPhase ? PHASE_BG : isItem ? ITEM_BG : '#fff',
                   borderBottom: '1px solid #f0f0f0',
                 }}>
                   {/* Name sub-column */}
                   <div style={{
                     width: NAME_W, minWidth: NAME_W,
-                    display: 'flex', alignItems: 'center',
+                    display: 'flex', alignItems: 'flex-start', paddingTop: 6,
                     paddingLeft: isPhase ? 10 : isItem ? 22 : 36,
                     paddingRight: 6,
                     fontWeight: isPhase ? 600 : 400,
@@ -552,13 +629,20 @@ export default function GanttChart() {
                     borderRight: '1px solid #e8e8f0',
                     overflow: 'hidden', gap: 5,
                   }}>
-                    {isPhase && <span style={{ fontSize: 10, flexShrink: 0 }}>▶</span>}
-                    {isItem  && <span style={{ fontSize: 9, color: '#aaa', flexShrink: 0 }}>├</span>}
-                    {isTask  && <span style={{ fontSize: 9, color: '#ccc', flexShrink: 0 }}>└</span>}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>{label}</span>
+                    {isPhase && <span style={{ fontSize: 10, flexShrink: 0, marginTop: 1 }}>▶</span>}
+                    {isItem  && <span style={{ fontSize: 9, color: '#aaa', flexShrink: 0, marginTop: 1 }}>├</span>}
+                    {isTask  && <span style={{ fontSize: 9, color: '#ccc', flexShrink: 0, marginTop: 1 }}>└</span>}
+                    <span style={{ overflow: 'hidden', wordBreak: 'break-word' }} title={label}>{label}</span>
                   </div>
-                  {/* Comments sub-column */}
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '2px 6px', overflow: 'hidden' }}
+                  {/* Status sub-column */}
+                  <div style={{ width: STATUS_W, minWidth: STATUS_W, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 6, borderRight: '1px solid #e8e8f0', flexShrink: 0 }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 500, padding: '2px 6px', borderRadius: 3,
+                      background: stColor.bg, color: stColor.fg, whiteSpace: 'nowrap',
+                    }}>{status}</span>
+                  </div>
+                  {/* Comments sub-column — full height, wraps text */}
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', padding: '4px 6px', overflow: 'hidden', cursor: 'text' }}
                     onClick={() => { setEditingComment(rk); setCommentDraft(cmt); }}>
                     {isEditingCmt ? (
                       <textarea
@@ -568,21 +652,23 @@ export default function GanttChart() {
                         onBlur={() => { saveComment(rk, commentDraft); setEditingComment(null); }}
                         onKeyDown={e => {
                           if (e.key === 'Escape') { setEditingComment(null); }
+                          // Shift+Enter = new line, plain Enter = commit
                           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveComment(rk, commentDraft); setEditingComment(null); }
                         }}
                         style={{
-                          width: '100%', height: ROW_H - 4, resize: 'none',
+                          width: '100%', minHeight: rh - 8, resize: 'vertical',
                           fontSize: 10, border: '2px solid #404789', borderRadius: 3,
-                          padding: '2px 4px', fontFamily: 'Roboto,sans-serif',
+                          padding: '3px 5px', fontFamily: 'Roboto,sans-serif',
                           background: '#fffff8', outline: 'none', boxSizing: 'border-box',
+                          lineHeight: '1.4',
                         }}
                       />
                     ) : (
                       <span style={{
                         fontSize: 10, color: cmt ? '#555' : '#ccc',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        width: '100%', cursor: 'text',
-                      }} title={cmt || 'Click to add comment'}>
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        width: '100%', lineHeight: '1.4',
+                      }}>
                         {cmt || <span style={{ fontStyle: 'italic', color: '#ccc' }}>add note…</span>}
                       </span>
                     )}
@@ -592,21 +678,19 @@ export default function GanttChart() {
             })}
           </div>
 
-          {/* Right chart area */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Right chart area: frozen axis SVG on top, scrollable rows SVG below */}
+          <div style={{ flex: 1, minWidth: MIN_CHART_W, position: 'relative' }}>
+
+            {/* FROZEN axis SVG — sticky top, sits above rows */}
             <svg
               width={chartW}
-              height={AXIS_H + totalH + 1}
-              style={{ display: 'block', fontFamily: 'Roboto,sans-serif' }}
+              height={AXIS_H}
+              style={{ display: 'block', fontFamily: 'Roboto,sans-serif', position: 'sticky', top: 0, zIndex: 3, background: '#f0f1f8' }}
             >
-              {/* Axis background */}
               <rect x={0} y={0} width={chartW} height={AXIS_H} fill="#f0f1f8" />
-
-              {/* Tick lines & labels */}
               {ticks.map((tick, i) => (
                 <g key={i}>
                   <line x1={tick.x} y1={AXIS_H - 6} x2={tick.x} y2={AXIS_H} stroke="#c0c4d4" />
-                  <line x1={tick.x} y1={AXIS_H} x2={tick.x} y2={AXIS_H + totalH} stroke="#eaeaf4" />
                   <text x={tick.x + 3} y={14} fontSize={9} fill="#666" fontFamily="Roboto,sans-serif">
                     {tick.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                   </text>
@@ -615,43 +699,51 @@ export default function GanttChart() {
                   </text>
                 </g>
               ))}
-              <line x1={0} y1={AXIS_H} x2={chartW} y2={AXIS_H} stroke="#d0d4e4" />
+              <line x1={0} y1={AXIS_H - 1} x2={chartW} y2={AXIS_H - 1} stroke="#d0d4e4" strokeWidth={2} />
+            </svg>
+
+            {/* Scrollable rows SVG */}
+            <svg
+              width={chartW}
+              height={totalH + 1}
+              style={{ display: 'block', fontFamily: 'Roboto,sans-serif' }}
+            >
+              {/* Vertical tick guide lines */}
+              {ticks.map((tick, i) => (
+                <line key={i} x1={tick.x} y1={0} x2={tick.x} y2={totalH} stroke="#eaeaf4" />
+              ))}
 
               {/* Row backgrounds + bars */}
               {rows.map((row, i) => {
                 const { type, data } = row;
                 const isPhase = type === 'phase';
-                const y = AXIS_H + i * ROW_H;
+                const y  = rowYs[i];
+                const rh = rowHeights[i];
                 return (
                   <g key={i}>
-                    {/* Row stripe */}
-                    <rect x={0} y={y} width={chartW} height={ROW_H}
+                    <rect x={0} y={y} width={chartW} height={rh}
                       fill={isPhase ? '#edeef8' : i % 2 === 0 ? '#fafafe' : '#fff'} />
-                    <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#f0f0f0" />
-
-                    {/* Expected bar */}
+                    <line x1={0} y1={y + rh} x2={chartW} y2={y + rh} stroke="#f0f0f0" />
                     {showExp && (
                       <Bar start={data.expStart} end={data.expEnd}
                         minD={globalMin} pxPerDay={pxPerDay}
-                        y={y} color={isPhase ? '#2e3f8f' : EXP_COLOR}
+                        y={y} rowH={rh} color={isPhase ? '#2e3f8f' : EXP_COLOR}
                         showBoth={showBoth} isExp={true} />
                     )}
-                    {/* Actual bar */}
                     {showAct && (
                       <Bar start={data.actStart} end={data.actEnd}
                         minD={globalMin} pxPerDay={pxPerDay}
-                        y={y} color={isPhase ? '#b8770a' : ACT_COLOR}
+                        y={y} rowH={rh} color={isPhase ? '#b8770a' : ACT_COLOR}
                         showBoth={showBoth} isExp={false} />
                     )}
                   </g>
                 );
               })}
-
-              {/* Today line on top */}
-              <TodayLine minD={globalMin} pxPerDay={pxPerDay} totalH={AXIS_H + totalH} />
+              <TodayLine minD={globalMin} pxPerDay={pxPerDay} totalH={totalH} />
             </svg>
           </div>
-        </div>
+          </div>{/* end flex row */}
+        </div>{/* end scroll wrapper */}
       )}
     </div>
   );
