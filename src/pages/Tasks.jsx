@@ -175,8 +175,8 @@ function CellDisplay({ col, task }) {
   if (col.key === 'ownerStatus') return <StatusBadge status={v || 'Not Started'} />;
   if (col.key === 'reviewerStatus') return <StatusBadge status={v || 'Not Started'} />;
   if (col.key === 'expectedEffort' || col.key === 'actualEffort')
-    return <span style={{ fontSize: 11, color: '#777' }}>{v ? `${v}d` : '\u2014'}</span>;
-  if (!v) return <span style={{ color: '#ccc' }}>\u2014</span>;
+    return <span style={{ fontSize: 11, color: '#777' }}>{v ? `${v}d` : '—'}</span>;
+  if (!v) return <span style={{ color: '#ccc' }}>—</span>;
   return <span style={{ fontSize: 11, color: '#404041', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: col.editType === 'textarea' ? 'normal' : 'nowrap' }}>{v}</span>;
 }
 
@@ -221,7 +221,7 @@ function ColFilter({ col, value, onChange }) {
       </th>
     );
   }
-  return <th style={thStyle}><input value={value} onChange={e => onChange(e.target.value)} placeholder="Filter\u2026" style={base} /></th>;
+  return <th style={thStyle}><input value={value} onChange={e => onChange(e.target.value)} placeholder="Filter…" style={base} /></th>;
 }
 
 // ─── Main component ───────────────────────────────────────────
@@ -533,7 +533,7 @@ export default function Tasks() {
         });
         updateTasks(importedTasks);
         const removed = tasks.length - matched;
-        showToast(`Imported ${importedTasks.length} tasks \u00b7 ${matched} updated \u00b7 ${added} new${removed > 0 ? ` \u00b7 ${removed} removed` : ''}`);
+        showToast(`Imported ${importedTasks.length} tasks · ${matched} updated · ${added} new${removed > 0 ? ` · ${removed} removed` : ''}`);
       } catch (err) { console.error(err); showToast('Import failed', 'error'); }
     };
     reader.readAsArrayBuffer(file);
@@ -543,8 +543,8 @@ export default function Tasks() {
   // ── Helpers: sort icon, new row ─────────────────────────────
   const SortIcon = ({ colKey }) =>
     sortKey !== colKey
-      ? <span style={{ color: '#c0c4d8', fontSize: 9, marginLeft: 2 }}>\u21c5</span>
-      : <span style={{ color: '#da9b38', fontSize: 10, marginLeft: 2 }}>{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>;
+      ? <span style={{ color: '#c0c4d8', fontSize: 9, marginLeft: 2 }}>⇅</span>
+      : <span style={{ color: '#da9b38', fontSize: 10, marginLeft: 2 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
 
   const NewRow = ({ phase, item }) => (
     <tr style={{ background: '#fffff0', borderBottom: '2px solid #404789' }}>
@@ -568,9 +568,9 @@ export default function Tasks() {
       ))}
       <td style={{ padding:'3px 6px', whiteSpace:'nowrap' }}>
         <button onClick={commitNewRow}
-          style={{ background:'#404789', color:'#fff', border:'none', borderRadius:3, padding:'3px 8px', fontSize:11, cursor:'pointer', marginRight:4, fontFamily:'Roboto,sans-serif' }}>\u2713 Save</button>
+          style={{ background:'#404789', color:'#fff', border:'none', borderRadius:3, padding:'3px 8px', fontSize:11, cursor:'pointer', marginRight:4, fontFamily:'Roboto,sans-serif' }}>✓ Save</button>
         <button onClick={() => setPendingNew(null)}
-          style={{ background:'#f5f5f5', color:'#555', border:'1px solid #ddd', borderRadius:3, padding:'3px 6px', fontSize:11, cursor:'pointer', fontFamily:'Roboto,sans-serif' }}>\u2715</button>
+          style={{ background:'#f5f5f5', color:'#555', border:'1px solid #ddd', borderRadius:3, padding:'3px 6px', fontSize:11, cursor:'pointer', fontFamily:'Roboto,sans-serif' }}>✕</button>
       </td>
     </tr>
   );
@@ -581,18 +581,18 @@ export default function Tasks() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <PageHeader
-        breadcrumb={`Implementation Hub \u203a ${activeProject.name}`}
+        breadcrumb={`Implementation Hub › ${activeProject.name}`}
         title="Tasks & Checklist"
-        subtitle={`${tasks.length} tasks \u00b7 ${done} done \u00b7 ${inprog} in progress \u00b7 ${blocked} blocked`}
+        subtitle={`${tasks.length} tasks · ${done} done · ${inprog} in progress · ${blocked} blocked`}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <label className="btn btn-ghost" style={{ cursor: 'pointer', margin: 0 }}>
-              \u2191 Import Excel
+              ↑ Import Excel
               <input type="file" accept=".xlsx,.xls" onChange={importXlsx} style={{ display: 'none' }} />
             </label>
-            <button className="btn btn-ghost" onClick={exportXlsx}>\u2193 Export Excel</button>
+            <button className="btn btn-ghost" onClick={exportXlsx}>↓ Export Excel</button>
             <div style={{ position: 'relative' }}>
-              <button className="btn btn-ghost" onClick={() => setShowAddCol(v => !v)}>\u2295 Column</button>
+              <button className="btn btn-ghost" onClick={() => setShowAddCol(v => !v)}>⊕ Column</button>
               {showAddCol && (
                 <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #d0d4e8', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 20, minWidth: 200, padding: '8px 0' }}>
                   <div style={{ padding: '4px 14px 6px', fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', fontWeight: 600 }}>Add Column</div>
@@ -614,7 +614,7 @@ export default function Tasks() {
                         style={{ padding: '4px 0', fontSize: 12, cursor: 'pointer', color: '#e53935', display: 'flex', alignItems: 'center', gap: 6 }}
                         onMouseEnter={e => { e.currentTarget.style.opacity = '.7'; }}
                         onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
-                        \u2715 {c.label}
+                        ✕ {c.label}
                       </div>
                     ))}
                   </div>
@@ -654,7 +654,7 @@ export default function Tasks() {
         {hasFilters && (
           <button onClick={() => { setColFilters({}); setQuickFilter(null); }}
             style={{ marginLeft: 8, fontSize: 11, color: '#e53935', background: 'none', border: '1px solid #ffcdd2', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>
-            \u2715 Clear all filters
+            ✕ Clear all filters
           </button>
         )}
       </div>
@@ -663,21 +663,21 @@ export default function Tasks() {
       <div style={{ background: '#f8f9fe', borderBottom: '1px solid #e8e8f0', padding: '4px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
         <button onClick={expandAll}
           style={{ fontSize: 11, padding: '3px 10px', border: '1px solid #c0c4d8', borderRadius: 3, background: '#fff', cursor: 'pointer', fontFamily: 'Roboto,sans-serif' }}>
-          \u25bc Expand All
+          ▼ Expand All
         </button>
         <button onClick={collapseAll}
           style={{ fontSize: 11, padding: '3px 10px', border: '1px solid #c0c4d8', borderRadius: 3, background: '#fff', cursor: 'pointer', fontFamily: 'Roboto,sans-serif' }}>
-          \u25b6 Collapse All
+          ▶ Collapse All
         </button>
         <span style={{ fontSize: 11, color: '#888' }}>{totalVisible} of {tasks.length} shown</span>
         {sortKey && (
           <button onClick={() => { setSortKey(null); persist({ sortKey: null, sortDir: 'asc' }); }}
             style={{ fontSize: 11, color: '#b07000', background: 'none', border: '1px solid #e8c870', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>
-            \u2715 Clear sort
+            ✕ Clear sort
           </button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: 10, color: canDrag ? '#9799b1' : '#bbb' }}>
-          {canDrag ? '\u2837 Drag rows to reorder \u00b7 Click cell to edit' : 'Click cell to edit inline'}
+          {canDrag ? '⠷ Drag rows to reorder · Click cell to edit' : 'Click cell to edit inline'}
         </span>
       </div>
 
@@ -720,7 +720,7 @@ export default function Tasks() {
                     <td style={{ padding: '5px 4px', textAlign: 'center' }}>
                       <button onClick={() => toggleCollapse(phaseKey)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#404789', lineHeight: 1, padding: 0 }}>
-                        {phaseCollapsed ? '\u25b6' : '\u25bc'}
+                        {phaseCollapsed ? '▶' : '▼'}
                       </button>
                     </td>
                     <td style={{ padding: '5px 4px', fontSize: 10, color: '#7986cb', textAlign: 'right' }}>P</td>
@@ -745,13 +745,13 @@ export default function Tasks() {
                           <td style={{ padding: '4px 4px', textAlign: 'center' }}>
                             <button onClick={() => toggleCollapse(itemKey)}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#7986cb', lineHeight: 1, padding: 0 }}>
-                              {itemCollapsed ? '\u25b6' : '\u25bc'}
+                              {itemCollapsed ? '▶' : '▼'}
                             </button>
                           </td>
                           <td style={{ padding: '4px 4px', fontSize: 10, color: '#9fa8da', textAlign: 'right' }}>I</td>
                           <td colSpan={visibleCols.length - 2}
                             style={{ padding: '4px 8px 4px 22px', fontWeight: 600, fontSize: 11, color: '#5c6bc0' }}>
-                            \u251c {item}
+                            ├ {item}
                             <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 500, padding: '1px 6px', borderRadius: 3, background: itemStatCol.bg, color: itemStatCol.fg }}>{itemStatus}</span>
                             <span style={{ marginLeft: 6, fontSize: 10, color: '#b0b8e8', fontWeight: 400 }}>({itemTasks.length} tasks)</span>
                           </td>
@@ -774,7 +774,7 @@ export default function Tasks() {
                                 onMouseLeave={e => { if (dragOver !== rowIdx && !isDeleting) e.currentTarget.style.background = base; }}
                               >
                                 <td style={{ padding: '3px 4px', color: '#ccc', cursor: canDrag ? 'grab' : 'default', textAlign: 'center', fontSize: 12, userSelect: 'none' }}>
-                                  {canDrag ? '\u2837' : ''}
+                                  {canDrag ? '⠷' : ''}
                                 </td>
                                 <td style={{ padding: '3px 4px', fontSize: 10, color: '#aaa', textAlign: 'right' }}>{rowIdx + 1}</td>
 
@@ -809,11 +809,11 @@ export default function Tasks() {
                                   ) : (
                                     <>
                                       <button onClick={() => insertBelow(task.id, phase, item)} title="Insert task below"
-                                        style={{ background: 'none', border: 'none', color: '#404789', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>\u2295</button>
+                                        style={{ background: 'none', border: 'none', color: '#404789', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>⊕</button>
                                       <button onClick={() => setDeleteConfirm(task.id)} title="Delete task"
                                         style={{ background: 'none', border: 'none', color: '#bbb', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}
                                         onMouseEnter={e => { e.currentTarget.style.color = '#e53935'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.color = '#bbb'; }}>\u2715</button>
+                                        onMouseLeave={e => { e.currentTarget.style.color = '#bbb'; }}>✕</button>
                                     </>
                                   )}
                                 </td>
@@ -841,7 +841,7 @@ export default function Tasks() {
       {/* Footer */}
       <div style={{ height: 26, background: '#f5f5f5', borderTop: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', fontSize: 11, color: '#888', flexShrink: 0 }}>
         <span>{tasks.length} total tasks</span>
-        <span>Done: {done} \u00b7 In Progress: {inprog} \u00b7 Blocked: {blocked}</span>
+        <span>Done: {done} · In Progress: {inprog} · Blocked: {blocked}</span>
       </div>
     </div>
   );
