@@ -7,7 +7,6 @@ import * as XLSX from 'xlsx';
 
 // ─── Constants ────────────────────────────────────────────────
 const STATUSES   = ADMIN_LISTS.statuses;
-const PHASES     = ADMIN_LISTS.phases;
 const RESP_LIST  = ADMIN_LISTS.responsibles;
 const TASK_TYPES = ['BA Checklist Item', 'Dev Task'];
 
@@ -546,8 +545,6 @@ export default function Tasks() {
     sortKey !== colKey
       ? <span style={{ color: '#c0c4d8', fontSize: 9, marginLeft: 2 }}>\u21c5</span>
       : <span style={{ color: '#da9b38', fontSize: 10, marginLeft: 2 }}>{sortDir === 'asc' ? '\u2191' : '\u2193'}</span>;
-
-  const colSpan = visibleCols.length;
 
   const NewRow = ({ phase, item }) => (
     <tr style={{ background: '#fffff0', borderBottom: '2px solid #404789' }}>
